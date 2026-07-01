@@ -1,0 +1,44 @@
+#define EPSILON 5
+#define G 0.2f
+#define MAX_DEPTH 16
+
+kernel void find_min(
+    global float4 *pos,
+    global float4 *res_buffer,
+    global float *out_min,
+    int amount_to_check
+) {
+
+    int id = get_global_id(0);
+
+    if (id >= amount_to_check || (id & 1) != 0) {
+        return;
+    }
+
+    float4 this_pos = pos[id]; 
+    float4 next_pos = pos[id + 1];
+
+    res_buffer[id >> 2] = fmin(this_pos, next_pos);
+
+}
+
+kernel void find_max(
+    global float4 *pos,
+    global float4 *res_buffer,
+    global float *out_max,
+    int amount_to_check
+) {
+
+    int id = get_global_id(0);
+
+    if (id >= amount_to_check || (id & 1) != 0) {
+        return;
+    }
+
+    float4 this_pos = pos[id]; 
+    float4 next_pos = pos[id + 1];
+
+    res_buffer[id >> 2] = fmax(this_pos, next_pos);
+    
+}
+

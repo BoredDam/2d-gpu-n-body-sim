@@ -1,0 +1,10 @@
+PARTICLE DATA
+
+pos_x
+pos_y
+vel_x
+vel_y
+acc_x
+acc_y
+mass
+node

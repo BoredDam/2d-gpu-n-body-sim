@@ -1,0 +1,8 @@
+main
+*.csv
+*.out
+*.pvsm
+*.toc
+*.aux
+*.log
+*.gz

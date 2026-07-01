@@ -1,0 +1,114 @@
+#define EPSILON 5.0f
+#define G 0.2f
+
+
+kernel void update_force(
+    global float2 *body_pos,
+    global float2 *body_vel,
+    global float2 *body_force,
+    global float *body_mass,
+    int body_count
+) {
+
+    int id = get_global_id(0);
+    
+    if (id >= body_count) {
+        return;
+    }
+
+    float2 this_pos = body_pos[id]; 
+    float2 this_vel = body_vel[id];
+    float this_mass = body_mass[id];
+    float2 this_force = (float2)(0.0f, 0.0f);
+    float2 dist_vec;
+    float dist_squared;
+    float attraction;
+
+    float2 other_pos;
+
+    for (int i = 0; i < body_count; i++) {
+        if (i == id) {
+            continue;
+        }
+        other_pos = body_pos[i];
+        dist_vec = other_pos - this_pos;
+        dist_squared = fmax(dist_vec.x * dist_vec.x + dist_vec.y * dist_vec.y, EPSILON);
+        attraction = G * (body_mass[i] * this_mass) / (dist_squared);
+        this_force += attraction * dist_vec * rsqrt(dist_squared);
+    }
+    
+    body_force[id] = this_force;
+
+}
+
+/*
+kernel void optimized_update_force(global float8 *bodies, global float3 *forces, int body_count) {
+
+    int id = get_global_id(0);
+    
+    if (id >= body_count) {
+        return;
+    }
+
+    float this_mass = bodies[id].s7; 
+    float3 this_pos = bodies[id].s123;
+
+    float3 dist_vec;
+    float dist;
+    float attraction;
+
+    float3 force_buffer = (float3)(0.0f, 0.0f, 0.0f);
+    float3 other_pos;
+    forces[id].xyz = (float3)(0.0f, 0.0f, 0.0f);
+    
+    for (int i = id + 1; i < body_count; i++) {
+        other_pos = bodies[i].s123;
+        dist_vec = other_pos - this_pos;
+        dist = fmax(distance(this_pos, other_pos), EPSILON);
+        attraction = G * (bodies[i].s7 * this_mass) / (dist * dist);
+        force_buffer += attraction * (dist_vec / dist);
+        forces[i] += -attraction * (dist_vec / dist);
+    }
+
+    forces[id] = force_buffer;
+
+}
+*/
+
+
+kernel void update_vel(
+    global float2 *body_pos,
+    global float2 *body_vel,
+    global float2 *body_force,
+    global float *body_mass,
+    float delta_time,
+    int body_count
+) {
+
+    int id = get_global_id(0);
+
+    if (id >= body_count) {
+        return;
+    }
+
+    body_vel[id] += (body_force[id] / body_mass[id]) * delta_time;
+}
+
+
+kernel void update_pos(
+    global float2 *body_pos,
+    global float2 *body_vel,
+    global float2 *body_force,
+    global float *body_mass,
+    float delta_time,
+    int body_count
+) {
+    int id = get_global_id(0);
+
+    if (id >= body_count) {
+        return;
+    }
+
+    body_pos[id] += body_vel[id] * delta_time;
+}
+
