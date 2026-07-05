@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
 	cl_device_id d = select_device(p);
 	cl_context ctx = create_context(p, d);
 	cl_command_queue que = create_queue(ctx, d);
-	cl_program prog = create_program(".src/kernels/naive_nbody.ocl", ctx, d);
+	cl_program prog = create_program("src/kernels/naive_nbody.ocl", ctx, d);
     
     cl_int err;
     cl_kernel update_force_k = clCreateKernel(prog, "update_force", &err);
@@ -356,7 +356,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < 10; i++) {
         printf("%f %f\n", body_pos[i].x, body_pos[i].y);
     }
-    
+    /*
     clReleaseMemObject(body_pos_mem);
     clReleaseMemObject(body_vel_mem);
     clReleaseMemObject(body_force_mem);
@@ -369,9 +369,10 @@ int main(int argc, char *argv[]) {
     clReleaseProgram(prog);
     clReleaseCommandQueue(que);
     clReleaseContext(ctx);
-
+    
     free(body_pos);
     free(body_vel);
     free(body_force);
     free(body_mass);
+    */
 }
