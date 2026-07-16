@@ -1,6 +1,11 @@
+#define BBOX_MIN_INDEX 0
+#define BBOX_MAX_INDEX 1
+
 kernel void reduce_min(
     global const float2 *red_bufA,
     global float2 *red_bufB,
+    global float2 *bounding_box, 
+    const unsigned int is_last,
     const unsigned int remaining_body_count
 ) {
     unsigned int out_id = get_global_id(0);
@@ -14,6 +19,11 @@ kernel void reduce_min(
     if (in_id + 1 < remaining_body_count) {
         value = fmin(value, red_bufA[in_id + 1]);
     }
+
+    if (is_last) {
+        bounding_box[BBOX_MIN_INDEX] = value;
+    }
+
     red_bufB[out_id] = value;
 }
 
@@ -21,6 +31,8 @@ kernel void reduce_min(
 kernel void reduce_max(
     global const float2 *red_bufA,
     global float2 *red_bufB,
+    global float2 *bounding_box, 
+    const unsigned int is_last,
     const unsigned int remaining_body_count
 ) {
     unsigned int out_id = get_global_id(0);
@@ -33,6 +45,10 @@ kernel void reduce_max(
     float2 value = red_bufA[in_id];
     if (in_id + 1 < remaining_body_count) {
         value = fmax(value, red_bufA[in_id + 1]);
+    }
+
+    if (is_last) {
+        bounding_box[BBOX_MAX_INDEX] = value;
     }
     red_bufB[out_id] = value;
 }

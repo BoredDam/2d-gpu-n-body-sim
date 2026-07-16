@@ -153,27 +153,62 @@ cl_event reduction_run_k(
     cl_kernel k,
     cl_mem red_bufA,
     cl_mem red_bufB,
+    cl_mem bounding_box,
+    unsigned int is_last,
     unsigned int remaining_body_count
 ) {
     cl_event event;
     cl_int err;
 
     unsigned int output_count = (remaining_body_count + 1) / 2;
+    unsigned int arg = 0;
+
     const size_t gws[1] = { round_mul_up(output_count, 32) };
-
-    err = clSetKernelArg(k, 0, sizeof(cl_mem), &red_bufA);
+    
+    err = clSetKernelArg(
+        k, 
+        arg, 
+        sizeof(cl_mem), 
+        &red_bufA
+    );
     ocl_check(err, "clSetKernelArg red_bufA");
+    arg++;
 
-    err = clSetKernelArg(k, 1, sizeof(cl_mem), &red_bufB);
+    err = clSetKernelArg(
+        k, 
+        arg, 
+        sizeof(cl_mem), 
+        &red_bufB
+    );
     ocl_check(err, "clSetKernelArg red_bufB");
+    arg++;
 
     err = clSetKernelArg(
         k,
-        2,
+        arg,
+        sizeof(bounding_box),
+        &bounding_box
+    );
+    ocl_check(err, "clSetKernelArg bounding_box");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(is_last),
+        &is_last
+    );
+    ocl_check(err, "clSetKernelArg is_last");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
         sizeof(remaining_body_count),
         &remaining_body_count
     );
     ocl_check(err, "clSetKernelArg remaining_body_count");
+
 
     err = clEnqueueNDRangeKernel(
         que,
@@ -223,8 +258,11 @@ int main(int argc, char *argv[]) {
 	cl_program prog = create_program("src/kernels/barnes_hut.ocl", ctx, d);
     
     cl_int err;
+
     cl_kernel reduce_min_k = clCreateKernel(prog, "reduce_min", &err);
     ocl_check(err, "clCreateKernel failed on reduce_min");
+    cl_kernel reduce_max_k = clCreateKernel(prog, "reduce_max", &err);
+    ocl_check(err, "clCreateKernel failed on reduce_max");
     
     cl_float2 *body_pos = malloc(sizeof(cl_float2) * body_count);
     cl_float2 *body_vel = malloc(sizeof(cl_float2) * body_count);
@@ -316,6 +354,15 @@ int main(int argc, char *argv[]) {
     /* INSERIRE QUI TUTTA LA ROBA DA ALLOCARE DIRETTAMENTE 
     NELLA GPU, QUINDI QUAD-TREE, ARRAY FORZA E SIMILI*/
 
+    cl_mem bounding_box_mem = clCreateBuffer(
+        ctx,
+        CL_MEM_READ_WRITE,
+        sizeof(cl_float2) * 2,
+        NULL,
+        &err
+    );
+    ocl_check(err, "clCreateBuffer failed on bounding_box_mem");
+
     cl_mem body_force_mem = clCreateBuffer(
         ctx,
         CL_MEM_READ_WRITE,
@@ -323,7 +370,7 @@ int main(int argc, char *argv[]) {
         NULL,
         &err
     );
-    ocl_check(err, "clCreateBuffer failed on body_force");
+    ocl_check(err, "clCreateBuffer failed on body_force_mem");
 
     err = clEnqueueFillBuffer(
         que,
@@ -377,12 +424,15 @@ int main(int argc, char *argv[]) {
 
         unsigned int remaining = body_count;
 
+        /*TROVARE IL MINIMO DEL SISTEMA*/
         while (remaining > 1) {
             reduction_run_k(
                 que,
                 reduce_min_k,
                 input_buffer,
                 output_buffer,
+                bounding_box_mem,
+                (int)(remaining == 2),
                 remaining
             );
             
@@ -396,11 +446,34 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        cl_float2 min;
+        remaining = body_count;
+        
+        /*TROVARE IL MASSIMO DEL SISTEMA*/
+        while (remaining > 1) {
+            reduction_run_k(
+                que,
+                reduce_max_k,
+                input_buffer,
+                output_buffer,
+                bounding_box_mem,
+                (int)(remaining == 2),
+                remaining
+            );
+            
+            remaining = (remaining + 1) / 2;
+            input_buffer = output_buffer;
+        
+            if (output_buffer == reduction_buffer1) {
+                output_buffer = reduction_buffer2;
+            } else {
+                output_buffer = reduction_buffer1;
+            }
+        }
 
+        cl_float2 min, max;
         err = clEnqueueReadBuffer(
             que,
-            input_buffer,
+            bounding_box_mem,
             CL_TRUE,
             0,
             sizeof(min),
@@ -411,7 +484,21 @@ int main(int argc, char *argv[]) {
         );
         ocl_check(err, "clEnqueueReadBuffer failed");
 
-        printf("MINIMI TROVATI: %f, %f\n", min.x, min.y);
+        err = clEnqueueReadBuffer(
+            que,
+            bounding_box_mem,
+            CL_TRUE,
+            sizeof(min),
+            sizeof(min),
+            &max,
+            0,
+            NULL,
+            &enqueue_map_or_read_buffer_event
+        );
+
+        ocl_check(err, "clEnqueueReadBuffer failed");
+
+        printf("MINIMI TROVATI: %f, %f\nMASSIMI TROVATI: %f, %f\n", min.x, min.y, max.x, max.y);
         
 
         /* FOR RETRIEVING BODY POSITIONS
