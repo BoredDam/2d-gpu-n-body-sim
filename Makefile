@@ -1,7 +1,7 @@
-all: naive_parallel
+all: barnes_hut
 
-naive_parallel: ./src/naive_parallel.c
-	gcc ./src/naive_parallel.c -lOpenCL -lm -o naive_parallel.out
+barnes_hut: ./src/barnes_hut.c
+	gcc ./src/barnes_hut.c -lOpenCL -lm -o barnes_hut.out
 	
 clean:
-	rm ./src/naive_parallel.c
+	rm ./src/barnes_hut.out
