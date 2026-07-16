@@ -1,0 +1,139 @@
+\documentclass{article}
+
+
+% Title Page
+\title{\Huge \textbf{Simulazioni \textit{n}-body su GPU: approccio naive e Barnes-Hut}}
+\author{Relazione del progetto di GPGPU - Damiano Trovato}
+\date{}
+
+\usepackage{graphicx} % Per le immagini
+\usepackage{amsmath} % Simboli matematici
+\usepackage[hidelinks]{hyperref} % Collegamenti ipertestuali
+\usepackage{amssymb} % Simboli matematici 2
+\usepackage{tikz}
+\usepackage{fancyvrb}
+\usepackage{multicol}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{tabularx} % nel preambolo
+\usepackage{listings}
+\usepackage{algorithm}
+\makeatletter
+\renewcommand{\ALG@name}{Pseudo-codice}
+\makeatother
+\usepackage{mathabx}
+\usepackage{algpseudocode}
+
+\renewcommand{\thelstnumber}{\arabic{lstnumber}:}
+\lstdefinestyle{mystyle}{          
+	numbers=left,                    
+	numbersep=5pt             
+}
+\lstset{style=mystyle}
+
+\makeatother
+\geometry{
+	a4paper,
+	total={160mm,260mm},
+	left=20mm,
+	top=18mm,
+}
+% RIDENOMINAZIONI
+\renewcommand{\contentsname}{Indice}
+\renewcommand{\figurename}{Immagine}
+
+
+\begin{document}
+
+	\maketitle
+	\begin{abstract}
+	Con la seguente relazione si documenta il processo di realizzazione di una simulazione $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni presentate saranno due: un'approccio naive su GPU, e un approccio approssimato Barnes-Hut, sempre su GPU.
+	\end{abstract}
+	
+	\section{Dettagli generali}
+	In questa prima parte della relazione, si trattano gli aspetti comuni a tutte le soluzioni trattate.
+	
+	\subsection{Aspetti matematici}
+	Si offre una lista delle formule matematiche che rendono fattibili le simulazioni realizzate all'interno del progetto.
+	
+	\paragraph{Legge di gravitazione universale} La seguente formula detta l'attrazione che agisce tra due corpi rispettivamente di massa $m_1$ ed $m_2$, situate a distanza $R$. Questa grandezza è direttamente proporzionale al prodotto delle masse e inversamente proporzionale al quadrato della distanza, tutto moltiplicato per una costante (di cui verrà modificato il valore ai fini della simulazione).
+	\begin{equation}
+	F = G \frac{m_1m_2}{R^2}
+	\end{equation}
+	
+	\paragraph{Dalla forza all'accelerazione}
+	
+	\begin{equation}
+	F = ma \Rightarrow a = \frac{F}{m}
+	\end{equation}
+	
+	\paragraph{Dall'accelerazione alla velocità} L'accelerazione è la derivata della velocità sul tempo, possiamo quindi ottenere
+	
+	\begin{equation}
+	a = \frac{dv}{dt} \Rightarrow adt = \frac{F}{m}dt = dv
+	\end{equation}
+	%
+	fissando un valore di $dt$, tramite la variabile \verb*|delta_time|, andremo a integrare rispetto al tempo, ottenendo la velocità.
+	
+	\paragraph{Dalla velocità allo spostamento}
+	
+	\begin{equation}
+	x(t) = x_0 + v dt
+	\end{equation}
+	
+	dove $dt = \verb*|delta_time|$.
+	
+	\subsection{Metodo numerico di integrazione: leapfrog}
+	Il metodo numerico utilizzato nella simulazione, è noto come metodo \textbf{leapfrog}, o metodo della cavallina. Il nome deriva dal modo in cui si alterna l'integrazione della velocità a quella del tempo.
+	
+	\begin{algorithm}[htp]
+		\caption{Integrazione Leapfrog}
+		\begin{algorithmic}[1]
+		\State Calcola la forza
+		\State Aggiorna la velocità per $\Delta t/2$
+		\For{Numero di iterazioni}
+			\State Aggiorna la posizione per $\Delta t$
+			\State Calcola la forza
+			\State Aggiorna la velocità per $\Delta t$
+		\EndFor
+		\end{algorithmic}
+	\end{algorithm}
+	
+	Questo metodo numerico, sfasando di $\Delta t/2$ l'integrazione della velocità e della posizione, ottiene, nel contesto delle simulazioni $n$-body, risultati più accurati a parità di operazioni. L'accuratezza guadagnata, rispetto a un banale metodo di Eulero, si manifesta nell'energia del sistema, che viene conservata (con oscillazioni trascurabili).
+	
+	
+	\section{Simulazione parallela naive su GPU}
+	Il primo approccio alla simulazione di sistemi a $n$ corpi che si è deciso di realizzare, è una soluzione parallela basata sull'algoritmo naive, con complessità computazionale $\mathcal{O}(n^2)$. 
+	
+	\subsection{I kernel fondamentali}
+	\subsection{L'algoritmo complessivo}
+	\subsection{Valutazione delle performance}
+	
+	\section{Simulazione approssimata Barnes-Hut su GPU}
+	\subsection{I kernel fondamentali}
+	
+	I primi kernel sono quelli dedicato alla definizione della dimensione della bounding-box (ossia della radice del quad-tree). Usiamo una riduzione parallela per trovare il minimo e il massimo dell'intero sistema particellare, di ciascuna delle due dimensioni. In questo modo, sarà possibile costruire un parallelepipedo che contiene l'intero sistema, per ciascun istante di tempo $t$.
+	
+	\begin{algorithm}
+		\caption{Kernel per la riduzione parallela (ricerca del minimo o massimo)}
+		\begin{algorithmic}[1]
+			\Require array $A$, array $B$, dimensione dell'input $n$
+			\State $j \gets$ id globale del work-item
+			\State $i \gets 2j$ 
+			\If{$i > n$}
+				\Return
+				\Comment Usciamo dal programma se il work-item è fuori dal dominio dell'input
+			\EndIf
+			\State $val \gets A[i]$
+			\If{$i + 1< n$}
+			\State $val \gets \min(val, A[i+1])$ \Comment $\max(val, A[i+1])$ nella ricerca del massimo
+			\EndIf
+			\State $B[j] \gets val$
+		\end{algorithmic}
+	\end{algorithm}
+	%
+	Questo kernel sarà lanciato fino a quando il minimo (massimo) si troverà alla posizione 0 dell'ultimo array usato. Nel codice host, abbiamo deciso di usare due array, scambiando ogni volta l'array di input e quello d'output (una sorta di ping-pong tra gli array).
+	\subsection{L'algoritmo complessivo}
+	\subsection{Valutazione delle performance}
+	
+\end{document}          
