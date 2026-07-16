@@ -1,0 +1,38 @@
+kernel void reduce_min(
+    global const float2 *red_bufA,
+    global float2 *red_bufB,
+    const unsigned int remaining_body_count
+) {
+    unsigned int out_id = get_global_id(0);
+    unsigned int in_id = out_id * 2;
+
+    if (in_id >= remaining_body_count) {
+        return;
+    }
+
+    float2 value = red_bufA[in_id];
+    if (in_id + 1 < remaining_body_count) {
+        value = fmin(value, red_bufA[in_id + 1]);
+    }
+    red_bufB[out_id] = value;
+}
+
+
+kernel void reduce_max(
+    global const float2 *red_bufA,
+    global float2 *red_bufB,
+    const unsigned int remaining_body_count
+) {
+    unsigned int out_id = get_global_id(0);
+    unsigned int in_id = out_id * 2;
+
+    if (in_id >= remaining_body_count) {
+        return;
+    }
+
+    float2 value = red_bufA[in_id];
+    if (in_id + 1 < remaining_body_count) {
+        value = fmax(value, red_bufA[in_id + 1]);
+    }
+    red_bufB[out_id] = value;
+}
