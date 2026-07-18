@@ -254,3 +254,66 @@ kernel void serial_build_tree(
         }
     }
 }
+
+
+kernel void summarize_tree(
+    global const float2 *body_pos,
+    global const float *body_mass,
+    global float *cell_mass,
+    global float2 *cell_center_of_mass,
+    global const int *cell_children,
+    unsigned int body_count,
+    unsigned int max_cells
+) {
+
+    unsigned int id = get_global_id(0);
+
+    if (id >= max_cells || cell_mass[id] >= 0) {
+        return;
+    }
+
+    float total_mass = 0;
+    float2 this_center_of_mass = (float2) {0, 0};
+
+    for (int child_idx = 0; child_idx < CHILDREN; child_idx++) {
+        
+        int this_child = cell_children[id * CHILDREN + child_idx];
+
+        if (this_child == NULL_NODE) {
+            continue;
+        }
+
+        float this_mass;
+        if (idx_is_body(this_child, body_count)) {
+            this_mass = body_mass[this_child];
+            total_mass += this_mass;
+            this_center_of_mass += this_mass * body_pos[this_child];
+        } else {
+            this_mass = cell_mass[idx_to_cell(this_child, body_count)];
+            total_mass += this_mass;
+            this_center_of_mass += cell_center_of_mass[idx_to_cell(this_child, body_count)] * this_mass;
+        }
+
+        this_center_of_mass = this_center_of_mass / total_mass;
+        cell_center_of_mass[id] = this_center_of_mass;
+        mem_fence(CLK_GLOBAL_MEM_FENCE);
+        cell_mass[id] = total_mass;
+    }
+}
+
+
+kernel void update_pos(
+    global float2 *body_pos,
+    global float2 *body_vel,
+    float delta_time,
+    int body_count
+) {
+    int id = get_global_id(0);
+
+    if (id >= body_count) {
+        return;
+    }
+
+    body_pos[id] += body_vel[id] * delta_time;
+}
+
