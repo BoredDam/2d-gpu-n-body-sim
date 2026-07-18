@@ -4,17 +4,7 @@ import matplotlib.pyplot as plt
 
 SEED = 42
 
-class Galaxy():
-    def __init__():
-        pass
 
-    def add():
-        pass
-
-    def write_galaxy_on_disk():
-        pass
-
-        
 def make_galaxy(
     N,
     radius,
@@ -63,16 +53,16 @@ def write_galaxy(name, X, Y, vX, vY, mass, round_to=7):
     return True
 
 X, Y, vX, vY, mass = make_galaxy(
-    4000,
-    8,
-    2,
+    100,
+    20,
+    6,
     14,
-    (-20, 0),
+    (-70, 0),
     SEED
 )
 
 X1, Y1, vX1, vY1, mass1 = make_galaxy(
-    4000,
+    100,
     12,
     6,
     -10,
@@ -82,5 +72,5 @@ X1, Y1, vX1, vY1, mass1 = make_galaxy(
 
 
 X, Y, vX, vY, mass = X + X1, Y + Y1, vX + vX1, vY + vY1, mass + mass1
-write_galaxy('test_galaxy2', X, Y, vX, vY, mass)
+write_galaxy('test_galaxy5', X, Y, vX, vY, mass)
 plot_galaxy(X, Y, vX, vY, mass)
