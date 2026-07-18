@@ -1,5 +1,10 @@
 #define BBOX_MIN_INDEX 0
 #define BBOX_MAX_INDEX 1
+#define CHILDREN 4
+#define NULL_NODE -1
+#define TOLLERANCE 1.0001f
+#define MAX_TREE_DEPTH 32
+
 
 kernel void reduce_min(
     global const float2 *red_bufA,
@@ -51,4 +56,201 @@ kernel void reduce_max(
         bounding_box[BBOX_MAX_INDEX] = value;
     }
     red_bufB[out_id] = value;
+}
+
+
+/* CONVENZIONE:
+    10 11
+    00 01
+*/
+inline int get_quadrant(float2 pos, float2 center) {
+
+    int right = pos.x >= center.x;
+    int top = pos.y >= center.y;
+    return (top << 1) | right;
+}
+
+
+inline float2 get_new_center(float2 parent_center, float parent_half_size, unsigned int quadrant) {
+    float2 new_center = parent_center;
+    parent_half_size = parent_half_size * 0.5f;
+    
+    switch(quadrant) {
+        case 0: new_center = new_center - parent_half_size;
+        break;
+        case 1: new_center = (float2) {new_center.x + parent_half_size, new_center.y - parent_half_size};
+        break;
+        case 2: new_center = (float2) {new_center.x - parent_half_size, new_center.y + parent_half_size};
+        break;
+        case 3: new_center = new_center + parent_half_size;
+        break;
+        default: new_center = new_center + parent_half_size;
+    }
+    return new_center;
+}
+
+
+/*
+per memorizzare nell'array del quad tree sia indici
+di nodi che indici di corpi, diciamo che qualsiasi 
+indice di nodo deve essere >= di body count, e quindi
+viene sommata proprio questa quantità
+*/
+
+inline int cell_to_idx(int cell_id, int body_count) {
+    return cell_id + body_count;
+}
+
+
+inline int idx_to_cell(int cell_id, int body_count) {
+    return cell_id - body_count;
+}
+
+
+inline int idx_is_body(int ref, int body_count) {
+    return ref >= 0 && ref < body_count;
+}
+
+
+inline int idx_is_cell(int ref, int body_count) {
+    return ref >= body_count;
+}
+
+
+kernel void reset_init_tree(
+    global int *cell_children,
+    global float2 *cell_center,
+    global float *cell_half_size,
+    global float *cell_mass,
+    global float2 *bounding_box,
+    unsigned int max_cells
+) {
+
+    unsigned int id = get_global_id(0);
+
+    if (id >= max_cells) {
+        return;
+    }
+
+    cell_center[id] = (float2)(0.0f, 0.0f);
+    cell_half_size[id] = 0.0f;
+    cell_mass[id] = -1.0f;
+
+    #pragma unroll 
+    for (int child = 0; child < CHILDREN; child++) {
+        cell_children[id * CHILDREN + child] = NULL_NODE;
+    }
+
+    if (id == 0) {
+        const float2 min = bounding_box[BBOX_MIN_INDEX];
+        const float2 max = bounding_box[BBOX_MAX_INDEX];
+        const float2 bbox_size = max - min;
+
+        cell_center[0] = 0.5f * (min + max);
+        cell_half_size[0] = 0.5f * fmax(bbox_size.x, bbox_size.y) * TOLLERANCE;
+    }
+}
+
+
+kernel void serial_build_tree(
+    global const float2 *body_pos,
+    global int *cell_children,
+    global float2 *cell_center,
+    global float *cell_half_size,
+    //global int *build_error,
+    unsigned int body_count,
+    unsigned int max_cells
+) {
+
+    if (get_global_id(0) != 0) {
+        return;
+    }
+
+    unsigned int allocated_cells = 1;
+
+    for (int id = 0; id < body_count; id++) {
+        float2 this_pos = body_pos[id]; 
+        int cell = 0;
+        bool inserted = 0;
+
+        for (int depth = 0; depth < MAX_TREE_DEPTH; depth++) {
+            if (inserted) {
+                break;
+            }
+            float2 center = cell_center[cell];
+            float half_size = cell_half_size[cell];
+            int quadrant = get_quadrant(this_pos, center);
+            int child_idx = cell * CHILDREN + quadrant; 
+            int child = cell_children[child_idx];
+            
+            if (child == NULL_NODE) {
+                cell_children[child_idx] = id;
+                inserted = true;
+                break;
+            }
+        
+            if (idx_is_cell(child, body_count)) { 
+                cell = idx_to_cell(child, body_count);
+                continue;
+            }
+
+            int old_body = child;
+            float2 old_pos = body_pos[old_body];
+
+            int top_cell = -1;
+            int parent_cell = -1;
+            int parent_quadrant = -1;
+            float2 parent_center = center;
+            float parent_half_size = half_size;
+
+            for (int split_depth = depth; 
+                split_depth < MAX_TREE_DEPTH; 
+                split_depth++
+            ) {
+                if (allocated_cells >= max_cells) {
+                    return;
+                }
+                
+                int new_cell = allocated_cells;
+                allocated_cells++;
+                float new_half_size = parent_half_size * 0.5f;
+                float2 new_center = get_new_center(parent_center, parent_half_size, quadrant);
+                cell_center[new_cell] = new_center;
+                cell_half_size[new_cell] = new_half_size;
+
+                /* TODO: VALUTAZIONE DELLE PERFORMANCE CON E SENZA PRAGMA UNROLL
+                dubito di vedere enormi miglioramenti, ma chissà */
+                #pragma unroll 
+                for (int child_index = 0; child_index < CHILDREN; child_index++) {
+                    cell_children[new_cell * CHILDREN + child_index] = NULL_NODE;
+                }
+
+                if (top_cell < 0) {
+                    top_cell = new_cell;
+                }
+
+                if (parent_cell >= 0) {
+                    cell_children[parent_cell * CHILDREN + parent_quadrant] = cell_to_idx(new_cell, body_count);
+                }
+
+                int old_quadrant = get_quadrant(old_pos, new_center);
+                int new_quadrant = get_quadrant(this_pos, new_center);
+
+                if (old_quadrant != new_quadrant) {
+                    cell_children[new_cell * CHILDREN + old_quadrant] = old_body;
+                    cell_children[new_cell * CHILDREN + new_quadrant] = id;
+                    cell_children[child_idx] = cell_to_idx(top_cell, body_count);
+
+                    inserted = true;
+                    break;
+                }
+
+                parent_cell = new_cell;
+                parent_quadrant = old_quadrant;
+                parent_center = new_center;
+                parent_half_size = new_half_size;
+                quadrant = old_quadrant;
+            }
+        }
+    }
 }
