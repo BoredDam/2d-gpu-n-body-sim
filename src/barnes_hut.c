@@ -148,6 +148,7 @@ cl_event update_vel_run_k(
     return event;
 }
 
+
 cl_event reduction_run_k(
     cl_command_queue que,
     cl_kernel k,
@@ -168,7 +169,7 @@ cl_event reduction_run_k(
     err = clSetKernelArg(
         k, 
         arg, 
-        sizeof(cl_mem), 
+        sizeof(red_bufA), 
         &red_bufA
     );
     ocl_check(err, "clSetKernelArg red_bufA");
@@ -177,7 +178,7 @@ cl_event reduction_run_k(
     err = clSetKernelArg(
         k, 
         arg, 
-        sizeof(cl_mem), 
+        sizeof(red_bufB), 
         &red_bufB
     );
     ocl_check(err, "clSetKernelArg red_bufB");
@@ -227,6 +228,184 @@ cl_event reduction_run_k(
 }
 
 
+cl_event reset_init_tree_run(
+    cl_command_queue que,
+    cl_kernel k,
+    cl_mem cell_children,
+    cl_mem cell_center,
+    cl_mem cell_half_size,
+    cl_mem cell_mass,
+    cl_mem bounding_box,
+    unsigned int max_cells
+) {
+    cl_event event;
+    cl_int err;
+
+    unsigned int arg = 0;
+
+    const size_t gws[1] = { round_mul_up(max_cells, 32) };
+
+    err = clSetKernelArg(
+        k, 
+        arg, 
+        sizeof(cell_children), 
+        &cell_children
+    );
+    ocl_check(err, "clSetKernelArg cell_children");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(cell_center),
+        &cell_center
+    );
+    ocl_check(err, "clSetKernelArg cell_center");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(cell_half_size),
+        &cell_half_size
+    );
+    ocl_check(err, "clSetKernelArg cell_half_size");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(cell_mass),
+        &cell_mass
+    );
+    ocl_check(err, "clSetKernelArg cell_mass");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(bounding_box),
+        &bounding_box
+    );
+    ocl_check(err, "clSetKernelArg bounding_box");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(max_cells),
+        &max_cells
+    );
+    ocl_check(err, "clSetKernelArg max_cells");
+    arg++;
+
+
+    err = clEnqueueNDRangeKernel(
+        que,
+        k,
+        1,
+        NULL,
+        gws,
+        NULL,
+        0,
+        NULL,
+        &event
+    );
+    ocl_check(err, "clEnqueueNDRangeKernel reset_init_tree_run");
+
+    return event;
+}
+
+
+cl_event build_tree_run(
+    cl_command_queue que,
+    cl_kernel k,
+    cl_mem body_pos,
+    cl_mem cell_children,
+    cl_mem cell_center,
+    cl_mem cell_half_size,
+    unsigned int body_count,
+    unsigned int max_cells
+) {
+    cl_event event;
+    cl_int err;
+
+    unsigned int arg = 0;
+
+    const size_t gws[1] = { 1 };
+    
+    err = clSetKernelArg(
+        k, 
+        arg, 
+        sizeof(body_pos), 
+        &body_pos
+    );
+    ocl_check(err, "clSetKernelArg body_pos");
+    arg++;
+
+    err = clSetKernelArg(
+        k, 
+        arg, 
+        sizeof(cell_children), 
+        &cell_children
+    );
+    ocl_check(err, "clSetKernelArg cell_children");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(cell_center),
+        &cell_center
+    );
+    ocl_check(err, "clSetKernelArg cell_center");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(cell_half_size),
+        &cell_half_size
+    );
+    ocl_check(err, "clSetKernelArg cell_half_size");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(body_count),
+        &body_count
+    );
+    ocl_check(err, "clSetKernelArg body_count");
+    arg++;
+
+    err = clSetKernelArg(
+        k,
+        arg,
+        sizeof(max_cells),
+        &max_cells
+    );
+    ocl_check(err, "clSetKernelArg max_cells");
+    arg++;
+
+
+    err = clEnqueueNDRangeKernel(
+        que,
+        k,
+        1,
+        NULL,
+        gws,
+        NULL,
+        0,
+        NULL,
+        &event
+    );
+    ocl_check(err, "clEnqueueNDRangeKernel build_tree_run");
+
+    return event;
+}
+
+
 int main(int argc, char *argv[]) {
     
     if (argc < 6) {
@@ -263,7 +442,11 @@ int main(int argc, char *argv[]) {
     ocl_check(err, "clCreateKernel failed on reduce_min");
     cl_kernel reduce_max_k = clCreateKernel(prog, "reduce_max", &err);
     ocl_check(err, "clCreateKernel failed on reduce_max");
-    
+    cl_kernel reset_init_tree_k = clCreateKernel(prog, "reset_init_tree", &err );
+    ocl_check(err, "clCreateKernel failed on reset_init_tree");
+    cl_kernel serial_build_tree_k = clCreateKernel(prog, "serial_build_tree", &err);
+    ocl_check(err, "clCreateKernel failed on serial_build_tree");
+        
     cl_float2 *body_pos = malloc(sizeof(cl_float2) * body_count);
     cl_float2 *body_vel = malloc(sizeof(cl_float2) * body_count);
     cl_float *body_mass = malloc(sizeof(cl_float) * body_count);
@@ -343,13 +526,11 @@ int main(int argc, char *argv[]) {
     free(body_vel);
     free(body_mass);
 
-    size_t node_buffer_size = sizeof(cl_int) * body_count * (NODE_PER_BODY + 1);
-    size_t children_buffer_size = sizeof(cl_int) * body_count * NODE_PER_BODY * CHILDREN;
-    size_t node_2dfloat_buffer_size = sizeof(cl_float2) * (body_count * NODE_PER_BODY + 1);
-    size_t node_1dfloat_buffer_size = sizeof(cl_float) * (body_count * NODE_PER_BODY + 1);
-
+    unsigned int max_cells = body_count * NODE_PER_BODY + 1;
+    size_t children_buffer_size = sizeof(cl_int) * (max_cells) * CHILDREN;
+    size_t cell_2dfloat_buffer_size = sizeof(cl_float2) * (body_count * NODE_PER_BODY + 1);
+    size_t cell_1dfloat_buffer_size = sizeof(cl_float) * (body_count * NODE_PER_BODY + 1);
     size_t reduction_buffer_size = sizeof(cl_float2) * body_count;
-
 
     /* INSERIRE QUI TUTTA LA ROBA DA ALLOCARE DIRETTAMENTE 
     NELLA GPU, QUINDI QUAD-TREE, ARRAY FORZA E SIMILI*/
@@ -403,6 +584,31 @@ int main(int argc, char *argv[]) {
     );
     ocl_check(err, "clCreateBuffer failed on reduction_buffer2");
 
+    
+    cl_mem cell_children_mem = clCreateBuffer(
+        ctx, CL_MEM_READ_WRITE, children_buffer_size, NULL, &err
+    );
+    ocl_check(err, "clCreateBuffer cell_children");
+
+    cl_mem cell_center_mem = clCreateBuffer(
+        ctx, CL_MEM_READ_WRITE, cell_2dfloat_buffer_size, NULL, &err
+    );
+    ocl_check(err, "clCreateBuffer cell_center");
+
+    cl_mem cell_half_size_mem = clCreateBuffer(
+        ctx, CL_MEM_READ_WRITE, cell_1dfloat_buffer_size, NULL, &err
+    );
+    ocl_check(err, "clCreateBuffer cell_half_size");
+
+    cl_mem cell_center_of_mass_mem = clCreateBuffer(
+        ctx, CL_MEM_READ_WRITE, cell_2dfloat_buffer_size, NULL, &err
+    );
+    ocl_check(err, "clCreateBuffer cell_center_of_mass");
+
+    cl_mem cell_mass_mem = clCreateBuffer(
+        ctx, CL_MEM_READ_WRITE, cell_1dfloat_buffer_size, NULL, &err
+    );
+    ocl_check(err, "clCreateBuffer cell_mass");
 
 
     /*TODO
@@ -449,6 +655,9 @@ int main(int argc, char *argv[]) {
         remaining = body_count;
         
         /*TROVARE IL MASSIMO DEL SISTEMA*/
+        input_buffer = body_pos_mem;
+        output_buffer = reduction_buffer1;
+        remaining = body_count;
         while (remaining > 1) {
             reduction_run_k(
                 que,
@@ -456,7 +665,7 @@ int main(int argc, char *argv[]) {
                 input_buffer,
                 output_buffer,
                 bounding_box_mem,
-                (int)(remaining == 2),
+                (remaining == 2),
                 remaining
             );
             
@@ -470,6 +679,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        /* TODO: CREARE UNA MODALITÀ DEBUG PER STAMPARE TUTTI I PASSAGGI
         cl_float2 min, max;
         err = clEnqueueReadBuffer(
             que,
@@ -499,7 +709,66 @@ int main(int argc, char *argv[]) {
         ocl_check(err, "clEnqueueReadBuffer failed");
 
         printf("MINIMI TROVATI: %f, %f\nMASSIMI TROVATI: %f, %f\n", min.x, min.y, max.x, max.y);
-        
+        */
+
+        cl_event reset_event = reset_init_tree_run(
+            que,
+            reset_init_tree_k,
+            cell_children_mem,
+            cell_center_mem,
+            cell_half_size_mem,
+            cell_mass_mem,
+            bounding_box_mem,
+            max_cells
+        );
+
+        cl_event build_event = build_tree_run(
+            que,
+            serial_build_tree_k,
+            body_pos_mem,
+            cell_children_mem,
+            cell_center_mem,
+            cell_half_size_mem,
+            body_count,
+            max_cells
+        );
+
+        /* TO DO: CREARE MODALITÀ DEBUG PER VALUTARE GLI OUTPUT
+        cl_float2 *cell_center_cpu = (cl_float2*) malloc(cell_2dfloat_buffer_size);
+
+        err = clEnqueueReadBuffer(
+            que,
+            cell_center_mem,
+            CL_TRUE,
+            0,
+            cell_2dfloat_buffer_size,
+            cell_center_cpu,
+            0,
+            NULL,
+            &enqueue_map_or_read_buffer_event
+        );
+        ocl_check(err, "enqueueReadBuffer failed");
+
+        cl_float *cell_halfsize_cpu = (cl_float*) malloc(cell_1dfloat_buffer_size);
+
+        err = clEnqueueReadBuffer(
+            que,
+            cell_half_size_mem,
+            CL_TRUE,
+            0,
+            cell_1dfloat_buffer_size,
+            cell_halfsize_cpu,
+            0,
+            NULL,
+            &enqueue_map_or_read_buffer_event
+        );
+        ocl_check(err, "enqueueReadBuffer failed");
+
+        write_bounding_box_on_disk(max_cells, cell_center_cpu, cell_halfsize_cpu, sim_name, i);
+        */
+        /*for (int i = 0; i < max_cells; i++) {
+            printf("%d\n", cell_children_cpu[i]);
+        }*/
 
         /* FOR RETRIEVING BODY POSITIONS
         body_pos = clEnqueueMapBuffer(
@@ -544,11 +813,30 @@ int main(int argc, char *argv[]) {
         ocl_check(err, "enqueueUnmapObject failed");*/
     }
     
+    clFinish(que);
     /*
     for (int i = 0; i < 100; i++) {
         printf("%f %f\n", body_pos[i].x, body_pos[i].y);
     }*/
+
+    clReleaseMemObject(body_pos_mem);
+    clReleaseMemObject(body_vel_mem);
+    clReleaseMemObject(body_mass_mem);
+    clReleaseMemObject(body_force_mem);
+    clReleaseMemObject(cell_center_mem);
+    clReleaseMemObject(cell_mass_mem);
+    clReleaseMemObject(cell_center_of_mass_mem);
+    clReleaseMemObject(cell_half_size_mem);
+    clReleaseMemObject(cell_children_mem);
+    clReleaseMemObject(bounding_box_mem);
+    clReleaseMemObject(reduction_buffer1);
+    clReleaseMemObject(reduction_buffer2);
     
+    clReleaseKernel(reduce_min_k);
+    clReleaseKernel(reduce_max_k);
+    clReleaseKernel(reset_init_tree_k);
+    clReleaseKernel(serial_build_tree_k);
+
     clReleaseProgram(prog);
     clReleaseCommandQueue(que);
     clReleaseContext(ctx);
