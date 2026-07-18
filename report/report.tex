@@ -24,6 +24,7 @@
 \usepackage{mathabx}
 \usepackage{algpseudocode}
 
+
 \renewcommand{\thelstnumber}{\arabic{lstnumber}:}
 \lstdefinestyle{mystyle}{          
 	numbers=left,                    
@@ -60,7 +61,8 @@
 	\begin{equation}
 	F = G \frac{m_1m_2}{R^2}
 	\end{equation}
-	
+	%
+	In natura $G$ è una costante minuscola che rende l'attrazione tra i corpi rilevante solo se i corpi hanno massa elevatissima o distanza reciproca ridotta. Ai fini della simulazione, questa costante verrà portata a valori molto più grandi.
 	\paragraph{Dalla forza all'accelerazione}
 	
 	\begin{equation}
@@ -76,11 +78,10 @@
 	fissando un valore di $dt$, tramite la variabile \verb*|delta_time|, andremo a integrare rispetto al tempo, ottenendo la velocità.
 	
 	\paragraph{Dalla velocità allo spostamento}
-	
 	\begin{equation}
 	x(t) = x_0 + v dt
 	\end{equation}
-	
+	%
 	dove $dt = \verb*|delta_time|$.
 	
 	\subsection{Metodo numerico di integrazione: leapfrog}
@@ -110,14 +111,16 @@
 	\subsection{Valutazione delle performance}
 	
 	\section{Simulazione approssimata Barnes-Hut su GPU}
+	Il metodo Barnes-Hut ...
 	\subsection{I kernel fondamentali}
 	
-	I primi kernel sono quelli dedicato alla definizione della dimensione della bounding-box (ossia della radice del quad-tree). Usiamo una riduzione parallela per trovare il minimo e il massimo dell'intero sistema particellare, di ciascuna delle due dimensioni. In questo modo, sarà possibile costruire un parallelepipedo che contiene l'intero sistema, per ciascun istante di tempo $t$.
+	\paragraph{Calcolo dei margini della bounding-box}
+	I primi kernel sono quelli dedicati alla definizione della dimensione della bounding-box (ossia della radice del quad-tree). Usiamo una riduzione parallela per trovare il minimo e il massimo dell'intero sistema particellare, di ciascuna delle due dimensioni. In questo modo, sarà possibile costruire un parallelepipedo che contiene l'intero sistema, per ciascun istante di tempo $t$.
 	
 	\begin{algorithm}
 		\caption{Kernel per la riduzione parallela (ricerca del minimo o massimo)}
 		\begin{algorithmic}[1]
-			\Require array $A$, array $B$, dimensione dell'input $n$
+			\Require array $A$, array $B$, dimensione dell'input $n$, array $BoundingBox$, flag per l'ultima riduzione
 			\State $j \gets$ id globale del work-item
 			\State $i \gets 2j$ 
 			\If{$i > n$}
@@ -128,12 +131,56 @@
 			\If{$i + 1< n$}
 			\State $val \gets \min(val, A[i+1])$ \Comment $\max(val, A[i+1])$ nella ricerca del massimo
 			\EndIf
+			\If{è l'ultima riduzione}
+			\State $BoundingBox[\verb|MIN_INDEX|] \gets val$ \Comment $BoundingBox[\verb|MAX_INDEX|]$ nella ricerca del
+			\EndIf
 			\State $B[j] \gets val$
 		\end{algorithmic}
 	\end{algorithm}
 	%
 	Questo kernel sarà lanciato fino a quando il minimo (massimo) si troverà alla posizione 0 dell'ultimo array usato. Nel codice host, abbiamo deciso di usare due array, scambiando ogni volta l'array di input e quello d'output (una sorta di ping-pong tra gli array).
+	
+	\paragraph{Costruzione del quad-tree}
+	Il secondo kernel che presentiamo, è quello relativo alla \textbf{costruzione del quad-tree}. Prima di presentare l'approccio, definiamo in cosa consiste il nostro quad-tree in termini di strutture dati. Necessitiamo infatti un modo per linearizzare un quad-tree in un array. 
+	
+	\begin{verbatim}
+		int cell_children = array dei figli di ciascuna cella. 4 volte più lungo degli altri;
+		float2 cell_center = array delle posizioni (x,y) dei centri delle celle;
+		float cell_half_size = array di metà lunghezza del lato delle celle;
+		float2 cell_center_of_mass_mem = centro di massa della cella (basato sui figli);
+		float cell_mass_mem = massa della cella (somma delle masse dei figli);
+	\end{verbatim}
+%
+La gestione degli indici in relazione ai figli è banale: in questo blog~\cite{mortimr2020rules} viene fornito un esempio banale:
+	
+	\begin{figure}[tbph]
+		\centering
+		\includegraphics[width=1\linewidth]{../images/mortim2020}
+	\end{figure}
+	Nel nostro caso, nell'array dedicato ai figli, i 4 figli della radice si avranno in posizione 0,1,2,3.
+	La profondità di un indice $i$ nell'albero può inoltre essere determinata da $\lceil\log_4(i)\rceil+1$. A parità di profondità, l'ordinamento dei quattro nodi rimane a nostra discrezione. Stabiliamo la seguente suddivisione, rispetto alla suddivisione dei quadranti:
+	
+	\begin{figure}[tbph]
+		\centering
+		\includegraphics[width=0.75\linewidth]{../images/codequadrant}
+	\end{figure}
+	
+	In questo modo, accedere ai quattro figli di un nodo $i$ consisterà nel calcolo $4i + j$, con $j=0$ per il figlio che indica il quadrante in basso a sinistra, $j=1$ per il quadrante in basso a destra, $J=2$ per il quadrante in alto a sinistra e $j=3$ per il quadrante in alto a destra. 
+	
+	In letteratura non si trovano esempi di algoritmi di costruzione di quad-tree paralleli su GPU senza ausilio delle funzioni atomiche. Usiamo quindi un approccio seriale, mantenendo tuttavia i dati su GPU, per risparmiare sullo scambio dati CPU-GPU.
+	
+	
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=1\linewidth]{../images/bounding-box1}
+\end{figure}
+
+	
+	
 	\subsection{L'algoritmo complessivo}
 	\subsection{Valutazione delle performance}
+	\newpage
+	\bibliographystyle{unsrt} 
+	\bibliography{report}      
 	
 \end{document}          
