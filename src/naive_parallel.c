@@ -2,6 +2,7 @@
 #include "./headers/sim-utils.h"
 #include <sys/stat.h>
 #include <limits.h>
+#include <linux/limits.h>
 
 #define DELTA_TIME 0.02f
 #define CENTER_DISTANCE 10
@@ -203,7 +204,7 @@ int main(int argc, char *argv[]) {
     size_t body_mass_buffer_size = sizeof(cl_float) * body_count;
 
     /*READING THE CONFIGURATION*/
-    char galaxy_path_name[1024] = GALAXIES_PATH;
+    char galaxy_path_name[PATH_MAX + 1] = GALAXIES_PATH;
     strcat(galaxy_path_name, galaxy_name);
 
     FILE *fp = fopen(galaxy_path_name, "r");
@@ -302,7 +303,7 @@ int main(int argc, char *argv[]) {
     clWaitForEvents(1, update_vel_event);
 
     cl_event enqueue_map_buffer_event;
-    char outputs_path_name[1024] = OUTPUTS_PATH;
+    char outputs_path_name[PATH_MAX + 1] = OUTPUTS_PATH;
     strcat(outputs_path_name, sim_name);
     mkdir(outputs_path_name, S_IRWXU);
 
@@ -412,5 +413,5 @@ int main(int argc, char *argv[]) {
     clReleaseCommandQueue(que);
     clReleaseContext(ctx);
     
-    
+    return EXIT_SUCCESS;
 }
