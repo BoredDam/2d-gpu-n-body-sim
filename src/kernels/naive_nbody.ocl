@@ -32,7 +32,7 @@ kernel void update_force(
         }
         other_pos = body_pos[i];
         dist_vec = other_pos - this_pos;
-        dist_squared = fmax(dist_vec.x * dist_vec.x + dist_vec.y * dist_vec.y, EPSILON);
+        dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
         attraction = G * (body_mass[i] * this_mass) / (dist_squared);
         this_force += attraction * dist_vec * rsqrt(dist_squared);
     }
