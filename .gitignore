@@ -6,3 +6,9 @@ main
 *.aux
 *.log
 *.gz
+*.blg
+*.bcf
+*.bbl
+report.run.xml
+Xbarnes_hut.c
+Xbarnes_hut_nbody.ocl
