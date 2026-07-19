@@ -16,48 +16,136 @@
 
 
 
-cl_event update_force_run_k(
-    cl_command_queue que, 
-    cl_kernel k, 
-    cl_mem body_pos, 
-    cl_mem body_vel,
-    cl_mem body_force,
+cl_event compute_force_walk_run(
+    cl_command_queue que,
+    cl_kernel k,
+    cl_mem body_pos,
     cl_mem body_mass,
+    cl_mem body_force,
+    cl_mem cell_mass,
+    cl_mem cell_center,
+    cl_mem cell_half_size,
+    cl_mem cell_center_of_mass,
+    cl_mem cell_children,
+    float theta_squared,
     unsigned int body_count
 ) {
     cl_event event;
-    const size_t gws[1]= { round_mul_up(body_count, 32) };
+    const size_t gws[1] = {
+        round_mul_up(body_count, 32)
+    };
+
     cl_int err;
     cl_uint arg_index = 0;
 
-    err = clSetKernelArg(k, arg_index, sizeof(body_pos), &body_pos);
-    ocl_check(err,"clSetKernelArg body_pos");
-    arg_index++;
-    
-    err = clSetKernelArg(k, arg_index, sizeof(body_vel), &body_vel);
-    ocl_check(err,"clSetKernelArg body_vel");
-    arg_index++;
-    
-    err = clSetKernelArg(k, arg_index, sizeof(body_force), &body_force);
-    ocl_check(err,"clSetKernelArg body_force");
-    arg_index++;
-    
-    err = clSetKernelArg(k, arg_index, sizeof(body_mass), &body_mass);
-    ocl_check(err,"clSetKernelArg body_mass");
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(body_pos),
+        &body_pos
+    );
+    ocl_check(err, "clSetKernelArg body_pos");
     arg_index++;
 
-    err = clSetKernelArg(k, arg_index, sizeof(body_count), &body_count);
-    ocl_check(err,"clSetKernelArg body_count");
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(body_mass),
+        &body_mass
+    );
+    ocl_check(err, "clSetKernelArg body_mass");
     arg_index++;
 
-    cl_int error = clEnqueueNDRangeKernel(que, k, 1, NULL, gws, NULL, 0, NULL, &event);
-    ocl_check(error, "clEnqueueNDRangeKernel");
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(body_force),
+        &body_force
+    );
+    ocl_check(err, "clSetKernelArg body_force");
+    arg_index++;
+
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(cell_mass),
+        &cell_mass
+    );
+    ocl_check(err, "clSetKernelArg cell_mass");
+    arg_index++;
+
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(cell_center),
+        &cell_center
+    );
+    ocl_check(err, "clSetKernelArg cell_center");
+    arg_index++;
+
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(cell_half_size),
+        &cell_half_size
+    );
+    ocl_check(err, "clSetKernelArg cell_half_size");
+    arg_index++;
+
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(cell_center_of_mass),
+        &cell_center_of_mass
+    );
+    ocl_check(err, "clSetKernelArg cell_center_of_mass");
+    arg_index++;
+
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(cell_children),
+        &cell_children
+    );
+    ocl_check(err, "clSetKernelArg cell_children");
+    arg_index++;
+
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(theta_squared),
+        &theta_squared
+    );
+    ocl_check(err, "clSetKernelArg theta_squared");
+    arg_index++;
+
+    err = clSetKernelArg(
+        k,
+        arg_index,
+        sizeof(body_count),
+        &body_count
+    );
+    ocl_check(err, "clSetKernelArg body_count");
+    arg_index++;
+
+    err = clEnqueueNDRangeKernel(
+        que,
+        k,
+        1,
+        NULL,
+        gws,
+        NULL,
+        0,
+        NULL,
+        &event
+    );
+    ocl_check(err, "clEnqueueNDRangeKernel compute_force_walk");
 
     return event;
 }
 
 
-cl_event update_pos_run_k(
+cl_event update_pos_run(
     cl_command_queue que, 
     cl_kernel k, 
     cl_mem body_pos, 
@@ -70,19 +158,31 @@ cl_event update_pos_run_k(
     cl_int err;
     cl_uint arg_index = 0;
 
-    err = clSetKernelArg(k, arg_index, sizeof(body_pos), &body_pos);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(body_pos), &body_pos);
     ocl_check(err,"clSetKernelArg body_pos");
     arg_index++;
     
-    err = clSetKernelArg(k, arg_index, sizeof(body_vel), &body_vel);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(body_vel), &body_vel);
     ocl_check(err,"clSetKernelArg body_vel");
     arg_index++;
 
-    err = clSetKernelArg(k, arg_index, sizeof(delta_time), &delta_time);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(delta_time), &delta_time);
     ocl_check(err,"clSetKernelArg update_pos delta_time");
     arg_index++;
 
-    err = clSetKernelArg(k, arg_index, sizeof(body_count), &body_count);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(body_count), &body_count);
     ocl_check(err,"clSetKernelArg body_count");
     arg_index++;
 
@@ -93,53 +193,82 @@ cl_event update_pos_run_k(
 }
 
 
-cl_event update_vel_run_k(
+cl_event update_vel_run(
     cl_command_queue que, 
-    cl_kernel k, 
-    cl_mem body_pos, 
+    cl_kernel k,
     cl_mem body_vel,
     cl_mem body_force,
     cl_mem body_mass,
-    unsigned int body_count,
-    cl_float delta_time
+    cl_float delta_time,
+    unsigned int body_count
 ) { 
     cl_event event;
     const size_t gws[1]= { round_mul_up(body_count, 32) };
     cl_int err;
     cl_uint arg_index = 0;
-
-    err = clSetKernelArg(k, arg_index, sizeof(body_pos), &body_pos);
-    ocl_check(err,"clSetKernelArg body_pos");
-    arg_index++;
     
-    err = clSetKernelArg(k, arg_index, sizeof(body_vel), &body_vel);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(body_vel), 
+        &body_vel
+    );
     ocl_check(err,"clSetKernelArg body_vel");
     arg_index++;
     
-    err = clSetKernelArg(k, arg_index, sizeof(body_force), &body_force);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(body_force), 
+        &body_force
+    );
     ocl_check(err,"clSetKernelArg body_mass");
     arg_index++;
     
-    err = clSetKernelArg(k, arg_index, sizeof(body_mass), &body_mass);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(body_mass), 
+        &body_mass
+    );
     ocl_check(err,"clSetKernelArg body_mass");
     arg_index++;
 
-    err = clSetKernelArg(k, arg_index, sizeof(delta_time), &delta_time);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(delta_time), 
+        &delta_time
+    );
     ocl_check(err,"clSetKernelArg update_pos delta_time");
     arg_index++;
 
-    err = clSetKernelArg(k, arg_index, sizeof(body_count), &body_count);
+    err = clSetKernelArg(
+        k, 
+        arg_index, 
+        sizeof(body_count), 
+        &body_count
+    );
     ocl_check(err,"clSetKernelArg body_count");
-    arg_index++;
 
-    cl_int error = clEnqueueNDRangeKernel(que, k, 1, NULL, gws, NULL, 0, NULL, &event);
-    ocl_check(error, "clEnqueueNDRangeKernel");
+    err = clEnqueueNDRangeKernel(
+        que, 
+        k, 
+        1, 
+        NULL, 
+        gws, 
+        NULL, 
+        0, 
+        NULL, 
+        &event
+    );
+    ocl_check(err, "clEnqueueNDRangeKernel");
 
     return event;
 }
 
 
-cl_event reduction_run_k(
+cl_event reduction_run(
     cl_command_queue que,
     cl_kernel k,
     cl_mem red_bufA,
@@ -518,6 +647,7 @@ int main(int argc, char *argv[]) {
     char *galaxy_name = argv[3];
     char *sim_name = argv[4];
     float theta = atof(argv[5]);
+    float theta_squared = theta * theta;
 
     /*openCL shenanigans*/
     cl_platform_id p = select_platform();
@@ -538,8 +668,10 @@ int main(int argc, char *argv[]) {
     ocl_check(err, "clCreateKernel failed on serial_build_tree");
     cl_kernel summarize_tree_k = clCreateKernel(prog, "summarize_tree", &err);
     ocl_check(err, "clCreateKernel failed on summarize_tree");
-
-
+    cl_kernel compute_force_walk_k = clCreateKernel(prog, "compute_force_walk", &err);
+    ocl_check(err, "clCreateKernel failed on update_pos");
+    cl_kernel update_vel_k = clCreateKernel(prog, "update_vel", &err);
+    ocl_check(err, "clCreateKernel failed on update_pos");
     cl_kernel update_pos_k = clCreateKernel(prog, "update_pos", &err);
     ocl_check(err, "clCreateKernel failed on update_pos");
         
@@ -728,7 +860,7 @@ int main(int argc, char *argv[]) {
 
         /*TROVARE IL MINIMO DEL SISTEMA*/
         while (remaining > 1) {
-            reduction_run_k(
+            reduction_run(
                 que,
                 reduce_min_k,
                 input_buffer,
@@ -755,7 +887,7 @@ int main(int argc, char *argv[]) {
         output_buffer = reduction_buffer1;
         remaining = body_count;
         while (remaining > 1) {
-            reduction_run_k(
+            reduction_run(
                 que,
                 reduce_max_k,
                 input_buffer,
@@ -881,7 +1013,32 @@ int main(int argc, char *argv[]) {
             );
         }
 
-        update_pos_run_k(
+        compute_force_walk_run(
+            que,
+            compute_force_walk_k,
+            body_pos_mem,
+            body_mass_mem,
+            body_force_mem,  
+            cell_mass_mem,
+            cell_center_mem,
+            cell_half_size_mem,
+            cell_center_of_mass_mem,
+            cell_children_mem,
+            theta_squared,
+            body_count
+        );
+
+        update_vel_run(
+            que,
+            update_vel_k,
+            body_vel_mem,
+            body_force_mem,
+            body_mass_mem,
+            DELTA_TIME,
+            body_count
+        );
+
+        update_pos_run(
             que,
             update_pos_k,
             body_pos_mem,
@@ -956,6 +1113,8 @@ int main(int argc, char *argv[]) {
     clReleaseKernel(reset_init_tree_k);
     clReleaseKernel(serial_build_tree_k);
     clReleaseKernel(summarize_tree_k);
+    clReleaseKernel(compute_force_walk_k);
+    clReleaseKernel(update_vel_k);
     clReleaseKernel(update_pos_k);
 
     clReleaseProgram(prog);

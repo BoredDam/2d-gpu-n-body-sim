@@ -4,7 +4,9 @@
 #define NULL_NODE -1
 #define TOLLERANCE 1.0001f
 #define MAX_TREE_DEPTH 32
-
+#define STACK_SIZE 128 /*idealmente altezza dell'albero * children*/
+#define EPSILON 2.5f
+#define G 0.1f
 
 kernel void reduce_min(
     global const float2 *red_bufA,
@@ -273,8 +275,8 @@ kernel void summarize_tree(
     }
 
     float total_mass = 0;
-    float2 this_center_of_mass = (float2) {0, 0};
-
+    float2 this_center_of_mass = (float2)(0.0f, 0.0f);
+    float2 weighted_pos = (float2)(0.0f, 0.0f);
     for (int child_idx = 0; child_idx < CHILDREN; child_idx++) {
         
         int this_child = cell_children[id * CHILDREN + child_idx];
@@ -287,24 +289,134 @@ kernel void summarize_tree(
         if (idx_is_body(this_child, body_count)) {
             this_mass = body_mass[this_child];
             total_mass += this_mass;
-            this_center_of_mass += this_mass * body_pos[this_child];
+            weighted_pos += this_mass * body_pos[this_child];
         } else {
             this_mass = cell_mass[idx_to_cell(this_child, body_count)];
+            if (this_mass < 0.0f) {
+                return;
+            }
             total_mass += this_mass;
-            this_center_of_mass += cell_center_of_mass[idx_to_cell(this_child, body_count)] * this_mass;
+            weighted_pos += cell_center_of_mass[idx_to_cell(this_child, body_count)] * this_mass;
+        }
+    }
+
+    if (total_mass <= 0.0f) {
+        return;
+    }
+
+    this_center_of_mass = weighted_pos / total_mass;
+    cell_center_of_mass[id] = this_center_of_mass;
+    mem_fence(CLK_GLOBAL_MEM_FENCE);
+    cell_mass[id] = total_mass;
+}
+
+
+kernel void compute_force_walk(
+    global const float2 *body_pos,
+    global const float *body_mass,
+    global float2 *body_force,
+    global float *cell_mass,
+    global float2 *cell_center,
+    global float *cell_half_size,
+    global float2 *cell_center_of_mass,
+    global const int *cell_children,
+    float const theta_squared,
+    unsigned int body_count
+) {
+    unsigned int id = get_global_id(0);
+    if (id >= body_count) {
+        return;
+    }
+    
+    float2 this_pos = body_pos[id];
+    float this_mass = body_mass[id];
+    float2 this_force = (float2)(0.0f, 0.0f);
+
+    int stack[STACK_SIZE];
+    stack[0] = cell_to_idx(0, body_count);
+    int stack_idx = 0;
+    stack_idx++;
+
+    while (stack_idx > 0) {
+        stack_idx--;
+
+        int node = stack[stack_idx];
+
+        if (node == NULL_NODE) {
+            continue;
         }
 
-        this_center_of_mass = this_center_of_mass / total_mass;
-        cell_center_of_mass[id] = this_center_of_mass;
-        mem_fence(CLK_GLOBAL_MEM_FENCE);
-        cell_mass[id] = total_mass;
+        if (idx_is_body(node, body_count)) {
+            if (node == id) {
+                continue;
+            }
+            float2 other_pos = body_pos[node];
+            float2 dist_vec = other_pos - this_pos;
+            float dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
+            float attraction = G * (body_mass[node] * this_mass) / (dist_squared);
+            this_force += attraction * dist_vec * rsqrt(dist_squared);
+            continue;
+        } 
+
+
+        int cell_idx = idx_to_cell(node, body_count);
+        float other_mass = cell_mass[cell_idx];
+
+        if (other_mass <= 0.0f) {
+            continue;
+        }
+        
+        float2 other_center_of_mass = cell_center_of_mass[cell_idx];
+        float2 other_center = cell_center[cell_idx];
+        float other_half_size = cell_half_size[cell_idx];
+
+        float2 dist_vec = other_center_of_mass - this_pos;
+        float dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
+
+        bool contains_body = (fabs(this_pos.x - other_center.x) <= other_half_size) &&
+                            (fabs(this_pos.y - other_center.y) <= other_half_size);
+
+        float size_squared =  (other_half_size * 2) * (other_half_size * 2);
+        if (!contains_body && size_squared < theta_squared * dist_squared) {
+            float attraction = G * (other_mass * this_mass) / (dist_squared);
+            this_force += attraction * dist_vec * rsqrt(dist_squared);
+            continue;
+        }
+        
+        for (int child_idx = 0; child_idx < CHILDREN; child_idx++) {
+            int child = cell_children[cell_idx * CHILDREN + child_idx];
+
+            if (child != NULL_NODE && stack_idx < STACK_SIZE) {
+                stack[stack_idx++] = child;
+            }
+        }
     }
+
+    body_force[id] = this_force;
+}
+
+
+kernel void update_vel(
+    global float2 *body_vel,
+    global const float2 *body_force,
+    global const float *body_mass,
+    const float  delta_time,
+    const int body_count
+) {
+
+    int id = get_global_id(0);
+
+    if (id >= body_count) {
+        return;
+    }
+
+    body_vel[id] += (body_force[id] / body_mass[id]) * delta_time;
 }
 
 
 kernel void update_pos(
     global float2 *body_pos,
-    global float2 *body_vel,
+    global const float2 *body_vel,
     float delta_time,
     int body_count
 ) {
@@ -316,4 +428,5 @@ kernel void update_pos(
 
     body_pos[id] += body_vel[id] * delta_time;
 }
+
 
