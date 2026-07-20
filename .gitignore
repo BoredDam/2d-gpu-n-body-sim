@@ -1,5 +1,5 @@
 main
-*.csv
+*frame_*.csv
 *.out
 *.pvsm
 *.toc
@@ -10,5 +10,3 @@ main
 *.bcf
 *.bbl
 report.run.xml
-Xbarnes_hut.c
-Xbarnes_hut_nbody.ocl
