@@ -4,9 +4,9 @@
 #define NULL_NODE -1
 #define TOLLERANCE 1.0001f
 #define MAX_TREE_DEPTH 32
-#define STACK_SIZE 128 /*idealmente altezza dell'albero * children*/
+#define STACK_SIZE 100
 #define EPSILON 2.5f
-#define G 0.1f
+#define G 0.2f
 
 kernel void reduce_min(
     global const float2 *red_bufA,
@@ -311,10 +311,10 @@ kernel void summarize_tree(
 }
 
 
-kernel void compute_force_walk(
+kernel void compute_acc_walk(
     global const float2 *body_pos,
     global const float *body_mass,
-    global float2 *body_force,
+    global float2 *body_acc,
     global float *cell_mass,
     global float2 *cell_center,
     global float *cell_half_size,
@@ -330,7 +330,7 @@ kernel void compute_force_walk(
     
     float2 this_pos = body_pos[id];
     float this_mass = body_mass[id];
-    float2 this_force = (float2)(0.0f, 0.0f);
+    float2 this_acceleration = (float2)(0.0f, 0.0f);
 
     int stack[STACK_SIZE];
     stack[0] = cell_to_idx(0, body_count);
@@ -353,8 +353,11 @@ kernel void compute_force_walk(
             float2 other_pos = body_pos[node];
             float2 dist_vec = other_pos - this_pos;
             float dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
-            float attraction = G * (body_mass[node] * this_mass) / (dist_squared);
-            this_force += attraction * dist_vec * rsqrt(dist_squared);
+
+            float inv_dist = rsqrt(dist_squared);
+            float inv_dist3 = inv_dist * inv_dist * inv_dist;
+
+            this_acceleration += G * body_mass[node] * dist_vec * inv_dist3;
             continue;
         } 
 
@@ -377,9 +380,11 @@ kernel void compute_force_walk(
                             (fabs(this_pos.y - other_center.y) <= other_half_size);
 
         float size_squared =  (other_half_size * 2) * (other_half_size * 2);
+        
         if (!contains_body && size_squared < theta_squared * dist_squared) {
-            float attraction = G * (other_mass * this_mass) / (dist_squared);
-            this_force += attraction * dist_vec * rsqrt(dist_squared);
+            float inv_dist = rsqrt(dist_squared);
+            float inv_dist3 = inv_dist * inv_dist * inv_dist;
+            this_acceleration += G * other_mass * dist_vec * inv_dist3;
             continue;
         }
         
@@ -392,15 +397,14 @@ kernel void compute_force_walk(
         }
     }
 
-    body_force[id] = this_force;
+    body_acc[id] = this_acceleration;
 }
 
 
 kernel void update_vel(
     global float2 *body_vel,
-    global const float2 *body_force,
-    global const float *body_mass,
-    const float  delta_time,
+    global const float2 *body_acc,
+    const float delta_time,
     const int body_count
 ) {
 
@@ -410,7 +414,7 @@ kernel void update_vel(
         return;
     }
 
-    body_vel[id] += (body_force[id] / body_mass[id]) * delta_time;
+    body_vel[id] += body_acc[id] * delta_time;
 }
 
 

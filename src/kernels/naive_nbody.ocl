@@ -2,43 +2,35 @@
 #define G 0.2f
 
 
-kernel void update_force(
-    global float2 *body_pos,
-    global float2 *body_vel,
-    global float2 *body_force,
-    global float *body_mass,
+kernel void update_acc(
+    global const float2 *body_pos,
+    global float2 *body_acc,
+    global const float *body_mass,
     int body_count
 ) {
-
     int id = get_global_id(0);
-    
+
     if (id >= body_count) {
         return;
     }
 
-    float2 this_pos = body_pos[id]; 
-    float2 this_vel = body_vel[id];
-    float this_mass = body_mass[id];
-    float2 this_force = (float2)(0.0f, 0.0f);
-    float2 dist_vec;
-    float dist_squared;
-    float attraction;
-
-    float2 other_pos;
+    const float2 this_pos = body_pos[id];
+    float2 this_acc = (float2)(0.0f, 0.0f);
 
     for (int i = 0; i < body_count; i++) {
         if (i == id) {
             continue;
         }
-        other_pos = body_pos[i];
-        dist_vec = other_pos - this_pos;
-        dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
-        attraction = G * (body_mass[i] * this_mass) / (dist_squared);
-        this_force += attraction * dist_vec * rsqrt(dist_squared);
-    }
-    
-    body_force[id] = this_force;
 
+        const float2 dist_vec = body_pos[i] - this_pos;
+        const float dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
+        const float inv_dist = rsqrt(dist_squared);
+        const float inv_dist3 = inv_dist * inv_dist * inv_dist;
+
+        this_acc += G * body_mass[i] * dist_vec * inv_dist3;
+    }
+
+    body_acc[id] = this_acc;
 }
 
 /*
@@ -77,10 +69,8 @@ kernel void optimized_update_force(global float8 *bodies, global float3 *forces,
 
 
 kernel void update_vel(
-    global float2 *body_pos,
     global float2 *body_vel,
-    global float2 *body_force,
-    global float *body_mass,
+    global float2 *body_acc,
     float delta_time,
     int body_count
 ) {
@@ -91,15 +81,13 @@ kernel void update_vel(
         return;
     }
 
-    body_vel[id] += (body_force[id] / body_mass[id]) * delta_time;
+    body_vel[id] += body_acc[id] * delta_time;
 }
 
 
 kernel void update_pos(
     global float2 *body_pos,
     global float2 *body_vel,
-    global float2 *body_force,
-    global float *body_mass,
     float delta_time,
     int body_count
 ) {

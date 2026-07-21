@@ -12,12 +12,11 @@
 
 
 
-cl_event update_force_run_k(
+cl_event update_acc_run_k(
     cl_command_queue que, 
     cl_kernel k, 
-    cl_mem body_pos, 
-    cl_mem body_vel,
-    cl_mem body_force,
+    cl_mem body_pos,
+    cl_mem body_acc,
     cl_mem body_mass,
     unsigned int body_count
 ) {
@@ -30,12 +29,8 @@ cl_event update_force_run_k(
     ocl_check(err,"clSetKernelArg body_pos");
     arg_index++;
     
-    err = clSetKernelArg(k, arg_index, sizeof(body_vel), &body_vel);
-    ocl_check(err,"clSetKernelArg body_vel");
-    arg_index++;
-    
-    err = clSetKernelArg(k, arg_index, sizeof(body_force), &body_force);
-    ocl_check(err,"clSetKernelArg body_force");
+    err = clSetKernelArg(k, arg_index, sizeof(body_acc), &body_acc);
+    ocl_check(err,"clSetKernelArg body_acc");
     arg_index++;
     
     err = clSetKernelArg(k, arg_index, sizeof(body_mass), &body_mass);
@@ -58,8 +53,6 @@ cl_event update_pos_run_k(
     cl_kernel k, 
     cl_mem body_pos, 
     cl_mem body_vel,
-    cl_mem body_force,
-    cl_mem body_mass,
     unsigned int body_count,
     cl_float delta_time
 ) {
@@ -74,14 +67,6 @@ cl_event update_pos_run_k(
     
     err = clSetKernelArg(k, arg_index, sizeof(body_vel), &body_vel);
     ocl_check(err,"clSetKernelArg body_vel");
-    arg_index++;
-    
-    err = clSetKernelArg(k, arg_index, sizeof(body_force), &body_force);
-    ocl_check(err,"clSetKernelArg body_force");
-    arg_index++;
-    
-    err = clSetKernelArg(k, arg_index, sizeof(body_mass), &body_mass);
-    ocl_check(err,"clSetKernelArg body_mass");
     arg_index++;
 
     err = clSetKernelArg(k, arg_index, sizeof(delta_time), &delta_time);
@@ -101,11 +86,9 @@ cl_event update_pos_run_k(
 
 cl_event update_vel_run_k(
     cl_command_queue que, 
-    cl_kernel k, 
-    cl_mem body_pos, 
+    cl_kernel k,
     cl_mem body_vel,
-    cl_mem body_force,
-    cl_mem body_mass,
+    cl_mem body_acc,
     unsigned int body_count,
     cl_float delta_time
 ) { 
@@ -113,20 +96,12 @@ cl_event update_vel_run_k(
     const size_t gws[1]= { round_mul_up(body_count, 32) };
     cl_int err;
     cl_uint arg_index = 0;
-
-    err = clSetKernelArg(k, arg_index, sizeof(body_pos), &body_pos);
-    ocl_check(err,"clSetKernelArg body_pos");
-    arg_index++;
     
     err = clSetKernelArg(k, arg_index, sizeof(body_vel), &body_vel);
     ocl_check(err,"clSetKernelArg body_vel");
     arg_index++;
     
-    err = clSetKernelArg(k, arg_index, sizeof(body_force), &body_force);
-    ocl_check(err,"clSetKernelArg body_mass");
-    arg_index++;
-    
-    err = clSetKernelArg(k, arg_index, sizeof(body_mass), &body_mass);
+    err = clSetKernelArg(k, arg_index, sizeof(body_acc), &body_acc);
     ocl_check(err,"clSetKernelArg body_mass");
     arg_index++;
 
@@ -175,8 +150,8 @@ int main(int argc, char *argv[]) {
 	cl_program prog = create_program("src/kernels/naive_nbody.ocl", ctx, d);
     
     cl_int err;
-    cl_kernel update_force_k = clCreateKernel(prog, "update_force", &err);
-    ocl_check(err, "clCreateKernel failed on update_force");
+    cl_kernel update_acc_k = clCreateKernel(prog, "update_acc", &err);
+    ocl_check(err, "clCreateKernel failed on update_acc");
 
     cl_kernel update_pos_k = clCreateKernel(prog, "update_pos", &err);
     ocl_check(err, "clCreateKernel failed on update_pos");
@@ -187,20 +162,20 @@ int main(int argc, char *argv[]) {
     
     cl_float2 *body_pos = malloc(sizeof(cl_float2) * body_count);
     cl_float2 *body_vel = malloc(sizeof(cl_float2) * body_count);
-    cl_float2 *body_force = malloc(sizeof(cl_float2) * body_count);
+    cl_float2 *body_acc = malloc(sizeof(cl_float2) * body_count);
     cl_float *body_mass = malloc(sizeof(cl_float) * body_count);
 
-    if (!body_pos || !body_vel || !body_force || !body_mass) {
+    if (!body_pos || !body_vel || !body_acc || !body_mass) {
         free(body_pos);
         free(body_vel);
-        free(body_force);
+        free(body_acc);
         free(body_mass);
         return EXIT_FAILURE;
     }
 
     size_t body_pos_buffer_size = sizeof(cl_float2) * body_count;
     size_t body_vel_buffer_size = sizeof(cl_float2) * body_count;
-    size_t body_force_buffer_size = sizeof(cl_float2) * body_count;
+    size_t body_acc_buffer_size = sizeof(cl_float2) * body_count;
     size_t body_mass_buffer_size = sizeof(cl_float) * body_count;
 
     /*READING THE CONFIGURATION*/
@@ -208,6 +183,7 @@ int main(int argc, char *argv[]) {
     strcat(galaxy_path_name, galaxy_name);
 
     FILE *fp = fopen(galaxy_path_name, "r");
+    printf("looking for %s...\n", galaxy_path_name);
     if (fp == NULL) {
         perror("error reading the file");
         return EXIT_FAILURE;
@@ -218,14 +194,12 @@ int main(int argc, char *argv[]) {
     float X, Y, vX, vY, mass;
 
     int row = 0;
-    while (fgets(line, sizeof(line), fp) != NULL) {
+    while (fgets(line, sizeof(line), fp) != NULL && row < body_count) {
         if (sscanf(line, "%f,%f,%f,%f,%f", &X, &Y, &vX, &vY, &mass) == 5) {
             body_pos[row].x = X;
             body_pos[row].y = Y;
             body_vel[row].x = vX;
             body_vel[row].y = vY;
-            body_force[row].x = 0;
-            body_force[row].y = 0;
             body_mass[row] = mass;
         } else {
             fprintf(stderr, "error reading the row no.\n%s", line);
@@ -254,14 +228,14 @@ int main(int argc, char *argv[]) {
     );
     ocl_check(err, "clCreateBuffer failed on body_vel");
 
-    cl_mem body_force_mem = clCreateBuffer(
+    cl_mem body_acc_mem = clCreateBuffer(
         ctx,
         CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        body_force_buffer_size,
-        body_force,
+        body_acc_buffer_size,
+        body_acc,
         &err
     );
-    ocl_check(err, "clCreateBuffer failed on body_force");
+    ocl_check(err, "clCreateBuffer failed on body_acc");
 
     cl_mem body_mass_mem = clCreateBuffer(
         ctx,
@@ -274,29 +248,26 @@ int main(int argc, char *argv[]) {
 
     free(body_pos);
     free(body_vel);
-    free(body_force);
+    free(body_acc);
     free(body_mass);
 
-    cl_event update_force_event[iterations + 1], update_pos_event[iterations], update_vel_event[iterations + 1];
+    cl_event update_acc_event[iterations + 1], update_pos_event[iterations], update_vel_event[iterations + 1];
 
-    update_force_event[0] = update_force_run_k(
+    update_acc_event[0] = update_acc_run_k(
         que, 
-        update_force_k, 
-        body_pos_mem, 
-        body_vel_mem,
-        body_force_mem,
+        update_acc_k, 
+        body_pos_mem,
+        body_acc_mem,
         body_mass_mem, 
         body_count
     );
-    clWaitForEvents(1, update_force_event);
+    clWaitForEvents(1, update_acc_event);
 
     update_vel_event[0] = update_vel_run_k(
         que, 
         update_vel_k, 
-        body_pos_mem, 
         body_vel_mem,
-        body_force_mem,
-        body_mass_mem, 
+        body_acc_mem,
         body_count,
         (cl_float) DELTA_TIME / 2);
 
@@ -313,19 +284,16 @@ int main(int argc, char *argv[]) {
             update_pos_k, 
             body_pos_mem, 
             body_vel_mem,
-            body_force_mem,
-            body_mass_mem, 
             body_count,
             (cl_float) DELTA_TIME
         );
         clWaitForEvents(1, update_pos_event + i);
 
-        update_force_event[i + 1] = update_force_run_k(
+        update_acc_event[i + 1] = update_acc_run_k(
             que, 
-            update_force_k, 
-            body_pos_mem, 
-            body_vel_mem,
-            body_force_mem,
+            update_acc_k, 
+            body_pos_mem,
+            body_acc_mem,
             body_mass_mem, 
             body_count
         );
@@ -333,10 +301,8 @@ int main(int argc, char *argv[]) {
         update_vel_event[i + 1] = update_vel_run_k(
             que, 
             update_vel_k, 
-            body_pos_mem, 
             body_vel_mem,
-            body_force_mem,
-            body_mass_mem, 
+            body_acc_mem,
             body_count,
             (cl_float) DELTA_TIME
         );
@@ -356,21 +322,6 @@ int main(int argc, char *argv[]) {
         );
         ocl_check(err, "enqueueMapBufferEvent failed");
         
-        body_vel = clEnqueueMapBuffer(
-            que, 
-            body_vel_mem, 
-            CL_TRUE, 
-            CL_MAP_READ, 
-            0, 
-            body_vel_buffer_size, 
-            0, 
-            NULL, 
-            &enqueue_map_buffer_event, 
-            &err
-        );
-
-        ocl_check(err, "enqueueMapBufferEvent failed");
-        
         write_frame_on_disk(body_count, body_pos, sim_name, i);
 
         cl_event enqueue_unmap_event;
@@ -385,15 +336,15 @@ int main(int argc, char *argv[]) {
         ocl_check(err, "enqueueUnmapObject failed");
     }
 
-    double time_force_ms, time_pos_ms, time_vel_ms, time_enqueue_map_ms;
+    double time_acc_ms, time_pos_ms, time_vel_ms, time_enqueue_map_ms;
     
     time_pos_ms = total_runtime_ms(update_pos_event[0], update_pos_event[iterations - 1]);
     time_vel_ms = total_runtime_ms(update_vel_event[0], update_vel_event[iterations]);
-    time_force_ms = total_runtime_ms(update_force_event[0], update_force_event[iterations]);
+    time_acc_ms = total_runtime_ms(update_acc_event[0], update_acc_event[iterations]);
     time_enqueue_map_ms = runtime_ms(enqueue_map_buffer_event);
 
-    printf("TIMES:\n\nupdate_pos: %gms,\nupdate_vel: %gms,\nupdate_force: %gms,\nenqueue_map_buffer: %gms\n",
-    time_pos_ms, time_vel_ms, time_force_ms, time_enqueue_map_ms);
+    printf("TIMES:\n\nupdate_pos: %gms,\nupdate_vel: %gms,\nupdate_acc: %gms,\nenqueue_map_buffer: %gms\n",
+    time_pos_ms, time_vel_ms, time_acc_ms, time_enqueue_map_ms);
     
     /*
     for (int i = 0; i < 100; i++) {
@@ -402,10 +353,10 @@ int main(int argc, char *argv[]) {
     
     clReleaseMemObject(body_pos_mem);
     clReleaseMemObject(body_vel_mem);
-    clReleaseMemObject(body_force_mem);
+    clReleaseMemObject(body_acc_mem);
     clReleaseMemObject(body_mass_mem);
 
-    clReleaseKernel(update_force_k);
+    clReleaseKernel(update_acc_k);
     clReleaseKernel(update_pos_k);
     clReleaseKernel(update_vel_k);
     

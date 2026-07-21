@@ -16,12 +16,12 @@
 
 
 
-cl_event compute_force_walk_run(
+cl_event compute_acc_walk_run(
     cl_command_queue que,
     cl_kernel k,
     cl_mem body_pos,
     cl_mem body_mass,
-    cl_mem body_force,
+    cl_mem body_acc,
     cl_mem cell_mass,
     cl_mem cell_center,
     cl_mem cell_half_size,
@@ -59,10 +59,10 @@ cl_event compute_force_walk_run(
     err = clSetKernelArg(
         k,
         arg_index,
-        sizeof(body_force),
-        &body_force
+        sizeof(body_acc),
+        &body_acc
     );
-    ocl_check(err, "clSetKernelArg body_force");
+    ocl_check(err, "clSetKernelArg body_acc");
     arg_index++;
 
     err = clSetKernelArg(
@@ -139,7 +139,7 @@ cl_event compute_force_walk_run(
         NULL,
         &event
     );
-    ocl_check(err, "clEnqueueNDRangeKernel compute_force_walk");
+    ocl_check(err, "clEnqueueNDRangeKernel compute_acc_walk");
 
     return event;
 }
@@ -197,8 +197,7 @@ cl_event update_vel_run(
     cl_command_queue que, 
     cl_kernel k,
     cl_mem body_vel,
-    cl_mem body_force,
-    cl_mem body_mass,
+    cl_mem body_acc,
     cl_float delta_time,
     unsigned int body_count
 ) { 
@@ -219,17 +218,8 @@ cl_event update_vel_run(
     err = clSetKernelArg(
         k, 
         arg_index, 
-        sizeof(body_force), 
-        &body_force
-    );
-    ocl_check(err,"clSetKernelArg body_mass");
-    arg_index++;
-    
-    err = clSetKernelArg(
-        k, 
-        arg_index, 
-        sizeof(body_mass), 
-        &body_mass
+        sizeof(body_acc), 
+        &body_acc
     );
     ocl_check(err,"clSetKernelArg body_mass");
     arg_index++;
@@ -668,7 +658,7 @@ int main(int argc, char *argv[]) {
     ocl_check(err, "clCreateKernel failed on serial_build_tree");
     cl_kernel summarize_tree_k = clCreateKernel(prog, "summarize_tree", &err);
     ocl_check(err, "clCreateKernel failed on summarize_tree");
-    cl_kernel compute_force_walk_k = clCreateKernel(prog, "compute_force_walk", &err);
+    cl_kernel compute_acc_walk_k = clCreateKernel(prog, "compute_acc_walk", &err);
     ocl_check(err, "clCreateKernel failed on update_pos");
     cl_kernel update_vel_k = clCreateKernel(prog, "update_vel", &err);
     ocl_check(err, "clCreateKernel failed on update_pos");
@@ -688,7 +678,7 @@ int main(int argc, char *argv[]) {
 
     size_t body_pos_buffer_size = sizeof(cl_float2) * body_count;
     size_t body_vel_buffer_size = sizeof(cl_float2) * body_count;
-    size_t body_force_buffer_size = sizeof(cl_float2) * body_count;
+    size_t body_acc_buffer_size = sizeof(cl_float2) * body_count;
     size_t body_mass_buffer_size = sizeof(cl_float) * body_count;
 
     /*READING THE CONFIGURATION*/
@@ -707,7 +697,7 @@ int main(int argc, char *argv[]) {
     float X, Y, vX, vY, mass;
 
     int row = 0;
-    while (fgets(line, sizeof(line), fp) != NULL) {
+    while (fgets(line, sizeof(line), fp) != NULL && row < body_count) {
         if (sscanf(line, "%f,%f,%f,%f,%f", &X, &Y, &vX, &vY, &mass) == 5) {
             body_pos[row].x = X;
             body_pos[row].y = Y;
@@ -772,27 +762,27 @@ int main(int argc, char *argv[]) {
     );
     ocl_check(err, "clCreateBuffer failed on bounding_box_mem");
 
-    cl_mem body_force_mem = clCreateBuffer(
+    cl_mem body_acc_mem = clCreateBuffer(
         ctx,
         CL_MEM_READ_WRITE,
-        body_force_buffer_size,
+        body_acc_buffer_size,
         NULL,
         &err
     );
-    ocl_check(err, "clCreateBuffer failed on body_force_mem");
+    ocl_check(err, "clCreateBuffer failed on body_acc_mem");
 
     err = clEnqueueFillBuffer(
         que,
-        body_force_mem,
+        body_acc_mem,
         &(cl_int){0},
         sizeof(cl_float2),
         0,               
-        body_force_buffer_size,
+        body_acc_buffer_size,
         0, 
         NULL, 
         NULL
     );
-    ocl_check(err, "clEnqueueFillBuffer failed on body_force_mem");
+    ocl_check(err, "clEnqueueFillBuffer failed on body_acc_mem");
 
     cl_mem reduction_buffer1 = clCreateBuffer(
         ctx,
@@ -842,16 +832,132 @@ int main(int argc, char *argv[]) {
     /*TODO
     CREARE TUTTI GLI EVENTI*/
 
-    /*TODO
-    MEZZO PASSO PER USARE IL LEAPFROG*/
     cl_event enqueue_map_or_read_buffer_event;
     char outputs_path_name[PATH_MAX + 1] = OUTPUTS_PATH;
     strcat(outputs_path_name, sim_name);
     mkdir(outputs_path_name, S_IRWXU);
 
+    /* MEZZO PASSO PER LEAPFROG */
+    cl_mem input_buffer = body_pos_mem;
+    cl_mem output_buffer = reduction_buffer1;
+    unsigned int remaining = body_count;
+    while (remaining > 1) {
+        reduction_run(
+            que,
+            reduce_min_k,
+            input_buffer,
+            output_buffer,
+            bounding_box_mem,
+            (int)(remaining == 2),
+            remaining
+        );
+        
+        remaining = (remaining + 1) / 2;
+        input_buffer = output_buffer;
+    
+        if (output_buffer == reduction_buffer1) {
+            output_buffer = reduction_buffer2;
+        } else {
+            output_buffer = reduction_buffer1;
+        }
+    }
+    remaining = body_count;
+    
+    /*TROVARE IL MASSIMO DEL SISTEMA*/
+    input_buffer = body_pos_mem;
+    output_buffer = reduction_buffer1;
+    remaining = body_count;
+    while (remaining > 1) {
+        reduction_run(
+            que,
+            reduce_max_k,
+            input_buffer,
+            output_buffer,
+            bounding_box_mem,
+            (remaining == 2),
+            remaining
+        );
+        
+        remaining = (remaining + 1) / 2;
+        input_buffer = output_buffer;
+    
+        if (output_buffer == reduction_buffer1) {
+            output_buffer = reduction_buffer2;
+        } else {
+            output_buffer = reduction_buffer1;
+        }
+    }
+
+    cl_event reset_event = reset_init_tree_run(
+        que,
+        reset_init_tree_k,
+        cell_children_mem,
+        cell_center_mem,
+        cell_half_size_mem,
+        cell_mass_mem,
+        bounding_box_mem,
+        max_cells
+    );
+    cl_event build_event = build_tree_run(
+        que,
+        serial_build_tree_k,
+        body_pos_mem,
+        cell_children_mem,
+        cell_center_mem,
+        cell_half_size_mem,
+        body_count,
+        max_cells
+    );
+
+    #pragma unroll MAX_TREE_DEPTH
+    for (int i = 0; i < MAX_TREE_DEPTH; i++) {
+        summarize_tree_run(
+            que,
+            summarize_tree_k,
+            body_pos_mem,
+            body_mass_mem,
+            cell_mass_mem,
+            cell_center_of_mass_mem,
+            cell_children_mem,
+            body_count,
+            max_cells
+        );
+    }
+    compute_acc_walk_run(
+        que,
+        compute_acc_walk_k,
+        body_pos_mem,
+        body_mass_mem,
+        body_acc_mem,  
+        cell_mass_mem,
+        cell_center_mem,
+        cell_half_size_mem,
+        cell_center_of_mass_mem,
+        cell_children_mem,
+        theta_squared,
+        body_count
+    );
+    
+    update_vel_run(
+        que,
+        update_vel_k,
+        body_vel_mem,
+        body_acc_mem,
+        DELTA_TIME/2,
+        body_count
+    );
     
     /*ITERAZIONI DELLA SIMULAZIONE*/
     for (int i = 0; i < iterations; i++) {
+        
+        update_pos_run(
+            que,
+            update_pos_k,
+            body_pos_mem,
+            body_vel_mem,
+            body_count,
+            DELTA_TIME
+        );
 
         cl_mem input_buffer = body_pos_mem;
         cl_mem output_buffer = reduction_buffer1;
@@ -1013,12 +1119,12 @@ int main(int argc, char *argv[]) {
             );
         }
 
-        compute_force_walk_run(
+        compute_acc_walk_run(
             que,
-            compute_force_walk_k,
+            compute_acc_walk_k,
             body_pos_mem,
             body_mass_mem,
-            body_force_mem,  
+            body_acc_mem,  
             cell_mass_mem,
             cell_center_mem,
             cell_half_size_mem,
@@ -1032,20 +1138,12 @@ int main(int argc, char *argv[]) {
             que,
             update_vel_k,
             body_vel_mem,
-            body_force_mem,
-            body_mass_mem,
+            body_acc_mem,
             DELTA_TIME,
             body_count
         );
 
-        update_pos_run(
-            que,
-            update_pos_k,
-            body_pos_mem,
-            body_vel_mem,
-            body_count,
-            DELTA_TIME
-        );
+
         
         body_pos = clEnqueueMapBuffer(
             que, 
@@ -1098,7 +1196,7 @@ int main(int argc, char *argv[]) {
     clReleaseMemObject(body_pos_mem);
     clReleaseMemObject(body_vel_mem);
     clReleaseMemObject(body_mass_mem);
-    clReleaseMemObject(body_force_mem);
+    clReleaseMemObject(body_acc_mem);
     clReleaseMemObject(cell_center_mem);
     clReleaseMemObject(cell_mass_mem);
     clReleaseMemObject(cell_center_of_mass_mem);
@@ -1113,7 +1211,7 @@ int main(int argc, char *argv[]) {
     clReleaseKernel(reset_init_tree_k);
     clReleaseKernel(serial_build_tree_k);
     clReleaseKernel(summarize_tree_k);
-    clReleaseKernel(compute_force_walk_k);
+    clReleaseKernel(compute_acc_walk_k);
     clReleaseKernel(update_vel_k);
     clReleaseKernel(update_pos_k);
 

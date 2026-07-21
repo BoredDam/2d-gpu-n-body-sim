@@ -23,7 +23,8 @@
 \makeatother
 \usepackage{mathabx}
 \usepackage{algpseudocode}
-
+\newcommand{\Break}{\State \textbf{break}}
+\newcommand{\Continue}{\State \textbf{continue}}
 
 \renewcommand{\thelstnumber}{\arabic{lstnumber}:}
 \lstdefinestyle{mystyle}{          
@@ -51,8 +52,12 @@
 	Con la seguente relazione si documenta il processo di realizzazione di una simulazione $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni presentate saranno due: un'approccio naive su GPU, e un approccio approssimato Barnes-Hut, sempre su GPU.
 	\end{abstract}
 	
-	\section{Dettagli generali}
-	In questa prima parte della relazione, si trattano gli aspetti comuni a tutte le soluzioni trattate.
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.75\linewidth]{../images/GALASSIA3}
+\end{figure}
+	\section{Dettagli comuni alle soluzioni trattate}
+	
 	
 	\subsection{Aspetti matematici}
 	Si offre una lista delle formule matematiche che rendono fattibili le simulazioni realizzate all'interno del progetto.
@@ -110,12 +115,32 @@
 	\subsection{L'algoritmo complessivo}
 	\subsection{Valutazione delle performance}
 	
+	\newpage
 	\section{Simulazione approssimata Barnes-Hut su GPU}
-	Il metodo Barnes-Hut ...
+	L'algoritmo Barnes-Hut permette di simulare sistemi a $n$ corpi in maniera approssimata, con precisione arbitraria e complessità asintotica $\mathcal O (n \log n)$. Sfrutta una particolare struttura dati, ossia un quad-tree (figura~\ref{fig:quadtree}) - un albero in cui ogni nodo ha quattro figli - per suddividere ricorsivamente lo spazio,  memorizzare valori relativi al sistema e velocizzare il passaggio più oneroso della simulazione brute-force: il calcolo delle forze (o dell'accelerazione), notoriamente un passaggio a complessità $\mathcal O (n^2)$.
+	
+	
+\begin{figure}[tbph]
+	\centering
+	\includegraphics[width=0.75\linewidth]{../images/quadtree}
+	\label{fig:quadtree}
+\end{figure}
+%
+L'idea è la seguente: costruiamo un albero che descrive l'intero sistema, e invece di calcolare l'attrazione tra un corpo $c$ e il resto dei corpi $C$, si visita l'albero, e per ogni altro nodo ci chiediamo ``posso approssimare tutti i figli di questo nodo ad un unico corpo?''. Lo \textbf{sviluppo in moltipoli} ci dice che questo è possibile quando l'area che include questi corpi non è molto grande e quando la distanza da $c$ è elevata: useremo un parametro $\theta$ soglia, che verrà confrontato proprio al rapporto tra le grandezze appena citate. Quando il criterio è rispettato, si accetta il nodo come approssimazione di tutti i corpi della regione associata, con posizione uguale al centro di massa, e massa uguale alla somma delle masse, altrimenti si continua la visita nell'albero. Su sistemi con molteplici regioni dense, ma molto distanti tra loro, l'algoritmo Barnes-Hut performa estremamente bene. 
+
+Tuttavia l'algoritmo paga l'overhead della costruzione del quad-tree, che richiede non pochi passaggi:
+\begin{enumerate}
+	\item Definizione dell'area dell'intero sistema particellare, ossia la \textbf{bounding-box}.
+	\item Inserimento di ciascun corpo all'interno dell'albero.
+	\item Propagazione nei nodi interni delle masse e dei centri di massa dei rispettivi figli.
+\end{enumerate}
+%
+Questi passaggi sono i più costosi dell'algoritmo, ma che offrono proprio il vantaggio asintotico. Trattiamo adesso come è stato possibile ottenere un vantaggio tramite la programmazione parallela su GPU.
+
 	\subsection{I kernel fondamentali}
 	
 	\paragraph{Calcolo dei margini della bounding-box}
-	I primi kernel sono quelli dedicati alla definizione della dimensione della bounding-box (ossia della radice del quad-tree). Usiamo una riduzione parallela per trovare il minimo e il massimo dell'intero sistema particellare, di ciascuna delle due dimensioni. In questo modo, sarà possibile costruire un parallelepipedo che contiene l'intero sistema, per ciascun istante di tempo $t$.
+	I primi kernel sono quelli dedicati alla definizione della dimensione della bounding-box (ossia della radice del quad-tree). Usiamo una riduzione parallela per trovare il minimo e il massimo dell'intero sistema particellare, di ciascuna delle due dimensioni. In questo modo, sarà possibile costruire un cubo che contiene l'intero sistema, per ciascun istante di tempo $t$.
 	
 	\begin{algorithm}
 		\caption{Kernel per la riduzione parallela (ricerca del minimo o massimo)}
@@ -141,7 +166,7 @@
 	Questo kernel sarà lanciato fino a quando il minimo (massimo) si troverà alla posizione 0 dell'ultimo array usato. Nel codice host, abbiamo deciso di usare due array, scambiando ogni volta l'array di input e quello d'output (una sorta di ping-pong tra gli array).
 	
 	\paragraph{Costruzione del quad-tree}
-	Il secondo kernel che presentiamo, è quello relativo alla \textbf{costruzione del quad-tree}. Prima di presentare l'approccio, definiamo in cosa consiste il nostro quad-tree in termini di strutture dati. Necessitiamo infatti un modo per linearizzare un quad-tree in un array. 
+	Il secondo kernel che presentiamo, è quello relativo alla \textbf{costruzione del quad-tree}. Prima di presentare il kernel, definiamo in cosa consiste il nostro quad-tree in termini di strutture dati. Necessitiamo infatti un modo per linearizzare un quad-tree in un array (sia per le performance, che per le capacità)
 	
 	\begin{verbatim}
 		int cell_children = array dei figli di ciascuna cella. 4 volte più lungo degli altri;
@@ -167,8 +192,12 @@ La gestione degli indici in relazione ai figli è banale: in questo blog~\cite{m
 	
 	In questo modo, accedere ai quattro figli di un nodo $i$ consisterà nel calcolo $4i + j$, con $j=0$ per il figlio che indica il quadrante in basso a sinistra, $j=1$ per il quadrante in basso a destra, $J=2$ per il quadrante in alto a sinistra e $j=3$ per il quadrante in alto a destra. 
 	
-	In letteratura non si trovano esempi di algoritmi di costruzione di quad-tree paralleli su GPU senza ausilio delle funzioni atomiche. Usiamo quindi un approccio seriale, mantenendo tuttavia i dati su GPU, per risparmiare sullo scambio dati CPU-GPU.
-	
+	In letteratura non si trovano esempi di algoritmi di costruzione di quad-tree paralleli su GPU senza ausilio delle funzioni atomiche. Usiamo quindi un approccio seriale, mantenendo tuttavia i dati su GPU, per risparmiare sullo scambio dati CPU-GPU. 
+	Ci rifaremo quindi alla costruzione del quad-tree dell'algoritmo originale, ossia.
+	\begin{enumerate}
+		\item Se il nodo corrente $c$ non contiene un corpo, inseriamo il corpo $b$ in $c$.
+		\item Se il nodo $c$ è un nodo interno, inseriamo il corpo $b$
+	\end{enumerate}
 	
 \begin{figure}[htbp]
 	\centering

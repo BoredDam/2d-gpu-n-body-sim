@@ -53,7 +53,7 @@ def write_galaxy(name, X, Y, vX, vY, mass, round_to=7):
     return True
 
 X, Y, vX, vY, mass = make_galaxy(
-    100,
+    100000,
     20,
     6,
     14,
@@ -62,11 +62,11 @@ X, Y, vX, vY, mass = make_galaxy(
 )
 
 X1, Y1, vX1, vY1, mass1 = make_galaxy(
-    100,
+    100000,
     12,
     6,
-    -10,
-    (20, 0),
+    -12,
+    (20, 60),
     SEED
 )
 
