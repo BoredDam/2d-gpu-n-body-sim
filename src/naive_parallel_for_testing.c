@@ -251,7 +251,9 @@ int main(int argc, char *argv[]) {
     free(body_acc);
     free(body_mass);
 
-    cl_event update_acc_event[iterations + 1], update_pos_event[iterations], update_vel_event[iterations + 1];
+    cl_event update_acc_event[iterations + 1], 
+             update_pos_event[iterations], 
+             update_vel_event[iterations + 1];
 
     update_acc_event[iterations] = update_acc_run(
         que, 
@@ -261,7 +263,7 @@ int main(int argc, char *argv[]) {
         body_mass_mem, 
         body_count
     );
-    clWaitForEvents(1, update_acc_event);
+    clWaitForEvents(1, &update_acc_event[iterations]);
 
     update_vel_event[iterations] = update_vel_run(
         que, 
@@ -271,7 +273,7 @@ int main(int argc, char *argv[]) {
         body_count,
         (cl_float) DELTA_TIME / 2);
 
-    clWaitForEvents(1, update_vel_event);
+    clWaitForEvents(1, &update_vel_event[iterations]);
 
     cl_event enqueue_map_buffer_event;
     char outputs_path_name[PATH_MAX + 1] = OUTPUTS_PATH;
@@ -287,7 +289,7 @@ int main(int argc, char *argv[]) {
             body_count,
             (cl_float) DELTA_TIME
         );
-        clWaitForEvents(1, update_pos_event + i);
+        clWaitForEvents(1, &update_pos_event[i]);
 
         update_acc_event[i] = update_acc_run(
             que, 
@@ -297,6 +299,7 @@ int main(int argc, char *argv[]) {
             body_mass_mem, 
             body_count
         );
+        clWaitForEvents(1, &update_acc_event[iterations]);
 
         update_vel_event[i] = update_vel_run(
             que, 
@@ -306,7 +309,7 @@ int main(int argc, char *argv[]) {
             body_count,
             (cl_float) DELTA_TIME
         );
-        clWaitForEvents(1, update_vel_event + i + 1);
+        clWaitForEvents(1, &update_vel_event[i]);
     }
 
     clFinish(que);
@@ -315,12 +318,13 @@ int main(int argc, char *argv[]) {
     
     for (unsigned int i = 0; i < iterations; i++) {
         time_pos_ms += runtime_ms(update_pos_event[i]);
-    }
-
-    for (unsigned int i = 0; i <= iterations; i++) {
         time_vel_ms += runtime_ms(update_vel_event[i]);
         time_acc_ms += runtime_ms(update_acc_event[i]);
     }
+
+    time_vel_ms += runtime_ms(update_vel_event[iterations]);
+    time_acc_ms += runtime_ms(update_acc_event[iterations]);
+    
 
     printf("TIMES:\n\nupdate_pos: %gms,\nupdate_vel: %gms,\nupdate_acc: %gms\n",
     time_pos_ms, time_vel_ms, time_acc_ms);
