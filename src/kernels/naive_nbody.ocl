@@ -26,46 +26,12 @@ kernel void update_acc(
         const float dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
         const float inv_dist = rsqrt(dist_squared);
         const float inv_dist3 = inv_dist * inv_dist * inv_dist;
-
         this_acc += G * body_mass[i] * dist_vec * inv_dist3;
+    
     }
 
     body_acc[id] = this_acc;
 }
-
-/*
-kernel void optimized_update_force(global float8 *bodies, global float3 *forces, int body_count) {
-
-    int id = get_global_id(0);
-    
-    if (id >= body_count) {
-        return;
-    }
-
-    float this_mass = bodies[id].s7; 
-    float3 this_pos = bodies[id].s123;
-
-    float3 dist_vec;
-    float dist;
-    float attraction;
-
-    float3 force_buffer = (float3)(0.0f, 0.0f, 0.0f);
-    float3 other_pos;
-    forces[id].xyz = (float3)(0.0f, 0.0f, 0.0f);
-    
-    for (int i = id + 1; i < body_count; i++) {
-        other_pos = bodies[i].s123;
-        dist_vec = other_pos - this_pos;
-        dist = fmax(distance(this_pos, other_pos), EPSILON);
-        attraction = G * (bodies[i].s7 * this_mass) / (dist * dist);
-        force_buffer += attraction * (dist_vec / dist);
-        forces[i] += -attraction * (dist_vec / dist);
-    }
-
-    forces[id] = force_buffer;
-
-}
-*/
 
 
 kernel void update_vel(

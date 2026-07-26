@@ -7,7 +7,7 @@
 #define DELTA_TIME 0.02f
 #define CENTER_DISTANCE 10
 #define GALAXIES_PATH "./galaxies/"
-#define OUTPUTS_PATH "./outputs/"
+#define OUTPUTS_PATH "./tests/"
 #define SEED 42
 
 
@@ -123,7 +123,7 @@ cl_event update_vel_run(
 int main(int argc, char *argv[]) {
     
     if (argc < 5) {
-        printf("correct usage: %s, [body count], [iterations], [config-name], [simulation-name]\n", argv[0]);
+        printf("correct usage: %s, [body count], [iterations], [config-name], [test-name]\n", argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -253,7 +253,7 @@ int main(int argc, char *argv[]) {
 
     cl_event update_acc_event[iterations + 1], update_pos_event[iterations], update_vel_event[iterations + 1];
 
-    update_acc_event[0] = update_acc_run(
+    update_acc_event[iterations] = update_acc_run(
         que, 
         update_acc_k, 
         body_pos_mem,
@@ -263,7 +263,7 @@ int main(int argc, char *argv[]) {
     );
     clWaitForEvents(1, update_acc_event);
 
-    update_vel_event[0] = update_vel_run(
+    update_vel_event[iterations] = update_vel_run(
         que, 
         update_vel_k, 
         body_vel_mem,
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]) {
         );
         clWaitForEvents(1, update_pos_event + i);
 
-        update_acc_event[i + 1] = update_acc_run(
+        update_acc_event[i] = update_acc_run(
             que, 
             update_acc_k, 
             body_pos_mem,
@@ -298,7 +298,7 @@ int main(int argc, char *argv[]) {
             body_count
         );
 
-        update_vel_event[i + 1] = update_vel_run(
+        update_vel_event[i] = update_vel_run(
             que, 
             update_vel_k, 
             body_vel_mem,
@@ -307,48 +307,27 @@ int main(int argc, char *argv[]) {
             (cl_float) DELTA_TIME
         );
         clWaitForEvents(1, update_vel_event + i + 1);
-
-        body_pos = clEnqueueMapBuffer(
-            que, 
-            body_pos_mem, 
-            CL_TRUE, 
-            CL_MAP_READ, 
-            0, 
-            body_pos_buffer_size, 
-            0, 
-            NULL, 
-            &enqueue_map_buffer_event, 
-            &err
-        );
-        ocl_check(err, "enqueueMapBufferEvent failed");
-        
-        write_frame_on_disk(body_count, body_pos, sim_name, i);
-
-        cl_event enqueue_unmap_event;
-        err = clEnqueueUnmapMemObject(
-            que,
-            body_pos_mem,
-            body_pos,
-            0, 
-            NULL, 
-            &enqueue_unmap_event
-        );
-        ocl_check(err, "enqueueUnmapObject failed");
     }
 
     clFinish(que);
-    
-    double time_acc_ms, time_pos_ms, time_vel_ms, time_enqueue_map_ms;
-    
-    time_pos_ms = total_runtime_ms(update_pos_event[0], update_pos_event[iterations - 1]);
-    time_vel_ms = total_runtime_ms(update_vel_event[0], update_vel_event[iterations]);
-    time_acc_ms = total_runtime_ms(update_acc_event[0], update_acc_event[iterations]);
-    time_enqueue_map_ms = runtime_ms(enqueue_map_buffer_event);
 
-    printf("TIMES:\n\nupdate_pos: %gms,\nupdate_vel: %gms,\nupdate_acc: %gms,\nenqueue_map_buffer: %gms\n",
-    time_pos_ms, time_vel_ms, time_acc_ms, time_enqueue_map_ms);
+    double time_acc_ms = 0, time_pos_ms = 0, time_vel_ms = 0;
     
+    for (unsigned int i = 0; i < iterations; i++) {
+        time_pos_ms += runtime_ms(update_pos_event[i]);
+    }
+
+    for (unsigned int i = 0; i <= iterations; i++) {
+        time_vel_ms += runtime_ms(update_vel_event[i]);
+        time_acc_ms += runtime_ms(update_acc_event[i]);
+    }
+
+    printf("TIMES:\n\nupdate_pos: %gms,\nupdate_vel: %gms,\nupdate_acc: %gms\n",
+    time_pos_ms, time_vel_ms, time_acc_ms);
+
+    write_naive_stats_on_disk(time_pos_ms, time_vel_ms, time_acc_ms, body_count, sim_name);
     
+
     clReleaseMemObject(body_pos_mem);
     clReleaseMemObject(body_vel_mem);
     clReleaseMemObject(body_acc_mem);

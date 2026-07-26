@@ -42,80 +42,231 @@
 }
 % RIDENOMINAZIONI
 \renewcommand{\contentsname}{Indice}
-\renewcommand{\figurename}{Immagine}
+\renewcommand{\figurename}{\textbf{Immagine}}
 
 
 \begin{document}
 
 	\maketitle
-	\begin{abstract}
-	Con la seguente relazione si documenta il processo di realizzazione di una simulazione $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni presentate saranno due: un'approccio naive su GPU, e un approccio approssimato Barnes-Hut, sempre su GPU.
-	\end{abstract}
 	
+\begin{abstract}
+Con la seguente relazione si documenta il processo di realizzazione di una simulazione $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni presentate saranno due: un'approccio naive su GPU, e un approccio approssimato Barnes-Hut, sempre su GPU.
+\end{abstract}
+	
+\section{Introduzione}
+In questa sezione offriamo un'introduzione al progetto, dando una definizione del problema $n$-body, i dettagli fisici e matematici e come verranno sviluppati i test.
+
+\subsection{Simulazioni \textit{n}-body}
+Una simulazione a $n$ corpi permette di calcolare l'evoluzione temporale di un sistema costituito da, appunto, $n$ corpi, che interagiscono tra loro con delle forze che dipendono dalla simulazione. Queste simulazioni sono fondamentali, in quanto ogni problema a $n$ corpi non banale, e con non configurazione non banale\footnote{assenza totale di forze, o configurazioni con determinate simmetrie.}, non dispone di una soluzione analitica.
+
 \begin{figure}[htbp]
 	\centering
-	\includegraphics[width=0.75\linewidth]{../images/GALASSIA3}
+	\includegraphics[width=0.8\linewidth]{../images/GALASSIA3}
+	\caption{Una demo a 180k corpi: \url{https://youtu.be/oSdXonzxpXk?si=4AL8uCfM6irIlBcW}}
 \end{figure}
-	\section{Dettagli comuni alle soluzioni trattate}
+%
+Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzioni per osservare l'evoluzione di sistemi cosmologici, seppur simulazioni accurate devono considerare anche i gas, e quindi implementare elementi di fluidodinamica.
+
+\newpage
+	\subsection{Aspetti fisici e matematici}
+	Si offre una lista delle formule matematiche che rendono fattibili le simulazioni realizzate all'interno del progetto. Le seguenti formule sono state prese dal video~\cite{deadlock2023nbody}.
 	
-	
-	\subsection{Aspetti matematici}
-	Si offre una lista delle formule matematiche che rendono fattibili le simulazioni realizzate all'interno del progetto.
-	
-	\paragraph{Legge di gravitazione universale} La seguente formula detta l'attrazione che agisce tra due corpi rispettivamente di massa $m_1$ ed $m_2$, situate a distanza $R$. Questa grandezza è direttamente proporzionale al prodotto delle masse e inversamente proporzionale al quadrato della distanza, tutto moltiplicato per una costante (di cui verrà modificato il valore ai fini della simulazione).
+	\paragraph{Legge di gravitazione universale} La seguente formula detta l'attrazione che agisce tra due corpi rispettivamente di massa $m_1$ ed $m_2$, situate a distanza $|r|$. Questa grandezza è direttamente proporzionale al prodotto delle masse e inversamente proporzionale al quadrato della distanza, ossia:
 	\begin{equation}
-	F = G \frac{m_1m_2}{R^2}
+	F = G \frac{m_1m_2}{|r|^2} \hat r = G \frac{m_1m_2}{|r|^2} \cdot \frac{r}{|r|} = G \frac{m_1m_2}{|r|^3} r.
 	\end{equation}
 	%
-	In natura $G$ è una costante minuscola che rende l'attrazione tra i corpi rilevante solo se i corpi hanno massa elevatissima o distanza reciproca ridotta. Ai fini della simulazione, questa costante verrà portata a valori molto più grandi.
+	In natura $G$ è una costante minuscola che rende l'attrazione tra i corpi rilevante solo se i corpi hanno massa elevatissima o distanza reciproca ridotta. Ai fini della simulazione, questa costante verrà portata a valori molto più grandi. $\hat r$ indica invece il versore\footnote{vettore unitario} che punta da $m_1$ a $m_2$, ottenuto normalizzando $r$. Sostituiamo quindi $\hat r$ con la sua formula esplicita.
 	\paragraph{Dalla forza all'accelerazione}
-	
+	Supponiamo sul corpo $m_1$ agisca una determinata forza $F$:
 	\begin{equation}
-	F = ma \Rightarrow a = \frac{F}{m}
-	\end{equation}
-	
-	\paragraph{Dall'accelerazione alla velocità} L'accelerazione è la derivata della velocità sul tempo, possiamo quindi ottenere
-	
-	\begin{equation}
-	a = \frac{dv}{dt} \Rightarrow adt = \frac{F}{m}dt = dv
+	F = m_1 a \Rightarrow a = \frac{F}{m_1} = G \frac{m_2}{|r|^3} r.
 	\end{equation}
 	%
-	fissando un valore di $dt$, tramite la variabile \verb*|delta_time|, andremo a integrare rispetto al tempo, ottenendo la velocità.
+	In definitiva, l'accelerazione che agisce su un corpo $m_i$ è data da:
+	\begin{equation}
+	a_i = \sum_{j=0,\, j \neq i}^{n-1} G \frac{m_j}{|r_j|^3} r_j.
+	\end{equation}
+	\paragraph{Dall'accelerazione alla velocità} L'accelerazione è la derivata della velocità sul tempo, possiamo quindi calcolare la velocità di un corpo tramite
+	
+	\begin{equation}
+	a = \frac{dv}{dt} \Rightarrow adt = dv,
+	\end{equation}
+	%
+	fissando un valore di $dt = \verb*|delta_time|$.
 	
 	\paragraph{Dalla velocità allo spostamento}
 	\begin{equation}
-	x(t) = x_0 + v dt
+	x = x_0 + v dt
 	\end{equation}
 	%
 	dove $dt = \verb*|delta_time|$.
 	
 	\subsection{Metodo numerico di integrazione: leapfrog}
+	\begin{figure}[tbph]
+		\centering
+		\includegraphics[width=1\linewidth]{../images/leapfrog}
+		\label{fig:leapfrog}
+	\end{figure}
+	%
 	Il metodo numerico utilizzato nella simulazione, è noto come metodo \textbf{leapfrog}, o metodo della cavallina. Il nome deriva dal modo in cui si alterna l'integrazione della velocità a quella del tempo.
 	
 	\begin{algorithm}[htp]
 		\caption{Integrazione Leapfrog}
 		\begin{algorithmic}[1]
-		\State Calcola la forza
-		\State Aggiorna la velocità per $\Delta t/2$
+		\State Calcola l'accelerazione
+		\State Aggiorna la velocità per $dt/2$
 		\For{Numero di iterazioni}
-			\State Aggiorna la posizione per $\Delta t$
-			\State Calcola la forza
-			\State Aggiorna la velocità per $\Delta t$
+			\State Aggiorna la posizione per $dt$
+			\State Calcola l'accelerazione
+			\State Aggiorna la velocità per $dt$
 		\EndFor
 		\end{algorithmic}
 	\end{algorithm}
 	
-	Questo metodo numerico, sfasando di $\Delta t/2$ l'integrazione della velocità e della posizione, ottiene, nel contesto delle simulazioni $n$-body, risultati più accurati a parità di operazioni. L'accuratezza guadagnata, rispetto a un banale metodo di Eulero, si manifesta nell'energia del sistema, che viene conservata (con oscillazioni trascurabili).
+	Questo metodo numerico, sfasando di $dt/2$ l'integrazione della velocità e della posizione, ottiene errore ridotto, miglior comportamento asintotico e conservazione dell'energia del sistema, rispetto al metodo di Eulero. Sono tecniche di integrazione egualmente onerose, ma il metodo Leapfrog è più accurato e totalmente reversibile~\cite{tarini2019gamephysics3}.
 	
+	\subsection{Studio delle performance su hardware}
+	I test delle varie soluzioni fornite, saranno effettuate su tre schede video differenti. A seguire, nomi e alcuni dettagli ottenuti con \verb|clinfo|:
+	\begin{itemize}
+		\item \textbf{AMD Radeon RX 6600 CLD 8GB} (discreta).
+		\item \textbf{Intel Arc Pro 130T/140T @ 2.35 GHz} (integrata).
+\begin{verbatim}
+Max compute units                               128
+Max clock frequency                             2350MHz
+Global memory size                              30512316416 (28.42GiB)
+\end{verbatim} 		
+		\item \textbf{inserire scheda video integrata della cpu del computer fisso} (integrata).
+	\end{itemize}
+	%
+	In tutte le soluzioni affrontate, verranno omesse le operazioni di scrittura a disco, che rappresentano una grande fonte di overhead, ma che sono anche fuori dallo scope del progetto.
+	\newpage
 	
 	\section{Simulazione parallela naive su GPU}
-	Il primo approccio alla simulazione di sistemi a $n$ corpi che si è deciso di realizzare, è una soluzione parallela basata sull'algoritmo naive, con complessità computazionale $\mathcal{O}(n^2)$. 
+	Il primo approccio alla simulazione di sistemi a $n$ corpi che si è deciso di realizzare, è una soluzione parallela basata sull'algoritmo naive, con complessità computazionale $\mathcal{O}(n^2)$. Consiste banalmente nel calcolo brute-force di tutte le interazioni corpo-a-corpo.
 	
-	\subsection{I kernel fondamentali}
-	\subsection{L'algoritmo complessivo}
-	\subsection{Valutazione delle performance}
+	
+	\subsection{Kernel fondamentali e ottimizzazioni}
+	
+	\paragraph{Calcolo dell'accelerazione naive}
+	Il primo kernel che trattiamo, viene eseguito su ogni corpo per ogni istante della simulazione, e permette il calcolo dell'accelerazione su ogni corpo.
+	\begin{algorithm}
+		\caption{Kernel per il calcolo dell'accelerazione di un corpo}
+		\begin{algorithmic}[1]
+			\Require array dei corpi $C$, $n = |C|$
+			\State $i \gets$ id globale del work-item
+			\If{$i >= n$}
+			\Return
+			\Comment Usciamo dal programma se il work-item è fuori dal dominio dell'input
+			\EndIf
+			\State $a \gets 0$
+			\ForAll{$j \in \operatorname{Range}(n)$}
+			\If{$i = j$} \Continue 
+			\EndIf
+			\State $ r \gets C_{pos}[i] - C_{pos}[j]$
+			\State $r = \max(r,\, \varepsilon)$
+			\State $a \gets G \frac{C_{mass}[j]}{|r|^3} r + a $
+			\EndFor
+			\State $C_{acc}[i] \gets a$
+		\end{algorithmic}
+	\end{algorithm}
+	%
+	dalla teoria all'implementazione, subentrano delle ottimizzazioni. Il calcolo di $\dfrac{1}{|r^3|}$ è infatti ottimizzato col calcolo della radice quadrata inversa su $r$ al cubo (notoriamente più veloce del calcolo esplicito della radice quadrata e della divisione).
+	
+	\begin{figure}[tph]
+		\centering
+		\includegraphics[width=1\linewidth]{../images/compute-accel-naive}
+	\end{figure}
+	%
+	Osserviamo inoltre una funzione $\max(r,\, \varepsilon)$, con $\varepsilon$ valore arbitrariamente piccolo per evitare che $|r|^3 \to 0$ (con conseguente accelerazione $\to \pm\infty$) o peggio ancora $|r|^3 = 0$, che causerebbe un errore di divisione per zero. Questo problema si pone perché nella simulazione non consideriamo collisioni, i corpi possono passarsi attraverso, ottenendo valori molto piccoli di $r$. Scegliamo il valore $\varepsilon$ sperimentalmente.
+	
+	\paragraph{Calcolo della velocità}
+	Il seguente kernel è invece dedicato al calcolo della velocità dall'accelerazione. Il delta tempo $dt$ è un argomento, in quanto necessario per il metodo Leapfrog.
+	\begin{algorithm}[htbp]
+		\caption{Kernel per il calcolo della velocità}
+		\begin{algorithmic}[1]
+			\Require array dei corpi $C$, $n = |C|$, delta tempo $dt$
+			\State $i \gets$ id globale del work-item
+			\If{$i >= n$}
+			\Return
+			\Comment Usciamo dal programma se il work-item è fuori dal dominio dell'input
+			\EndIf
+			\State $C_{vel}[i] \gets C_{vel}[i] + C_{acc}[i] \cdot dt$
+		\end{algorithmic}
+	\end{algorithm}
+	
+	\paragraph{Calcolo della posizione}
+	L'ultimo kernel della simulazione naive è dedicato all'aggiornamento della posizione. 
+	\begin{algorithm}[htbp]
+		\caption{Kernel per il calcolo della posizione}
+		\begin{algorithmic}[1]
+			\Require array dei corpi $C$, $n = |C|$, delta tempo $dt$
+			\State $i \gets$ id globale del work-item
+			\If{$i >= n$}
+			\Return
+			\Comment Usciamo dal programma se il work-item è fuori dal dominio dell'input
+			\EndIf
+			\State $C_{pos}[i] \gets C_{pos}[i] + C_{vel}[i] \cdot dt$
+		\end{algorithmic}
+	\end{algorithm}
 	
 	\newpage
+	\subsection{Codice host, algoritmo complessivo}
+	
+		\begin{algorithm}[htp]
+		\caption{Simulazione $n$-body naive}
+		\begin{algorithmic}[1]
+		\Require array dei corpi $C$, $n = |C|$, delta tempo $dt$, numero di  iterazioni $t$
+		\State lancia $n$ kernel \textbf{accelerazione naive} su $C$ con delta tempo $dt$ 
+		\State lancia $n$ kernel \textbf{calcolo velocità} su $C$ con delta tempo $dt/2$ 
+		\For{t}
+		\State lancia $n$ kernel \textbf{calcolo posizione} su $C$ con delta tempo $dt$ 
+		\State lancia $n$ kernel \textbf{accelerazione naive} su $C$ con delta tempo $dt$ 
+		\State lancia $n$ kernel \textbf{calcolo velocità} su $C$ con delta tempo $dt$ 
+		\EndFor
+		
+		\end{algorithmic}
+	\end{algorithm}
+	%
+	In realtà, per ogni kernel lanciato, il numero di kernel è quasi sempre arrotondato al primo multiplo di 32 più grande di $n$, per evitare che le performance vengano penalizzate (aggiungerei, in maniera disastrosa) da un numero primo di particelle.
+	\subsection{Valutazione delle performance}
+	Procediamo adesso con un'analisi delle performance dell'algoritmo naive. Prima di parlare con i dati alla mano, ricapitoliamo la complessità asintotica dei singoli passaggi (con una prospettiva seriale):
+	\begin{itemize}
+	\item aggiornamento posizione: $\mathcal O (n)$;
+	\item aggiornamento velocità: $\mathcal O (n)$;
+	\item aggiornamento accelerazione: $\mathcal O (n^2)$;
+	\end{itemize}
+	ma anche il numero di accessi in memoria globale, che sappiamo rappresentare una delle più grandi fonti di bottleneck nell'esecuzione dei kernel, che sono:
+	
+	\begin{itemize}
+		\item aggiornamento posizione: 2, uno alla velocità e uno alla posizione, $\mathcal O(1)$;
+		\item aggiornamento velocità: 2, uno all'accelerazione e uno alla velocità, $\mathcal O(1)$;
+		\item aggiornamento accelerazione: $1 + 2n$, $n$ alle posizioni, $n$ alle masse, 1 all'accelerazione, $\mathcal O(n)$;
+	\end{itemize}
+	e ricordando che questo vale per un numero di work-item pari al numero di corpi, ossia $n$.
+	
+	Le nostre valutazioni avverranno rispetto ad un numero crescente di corpi $n$ da 10 a $\sim 180 000$. Per ogni simulazione, valutiamo il calcolo di 10 frame, in modo da ridurre l'effetto della varianza sul singolo tempo di esecuzione del kernel, su un frame particolarmente fortunato (o sfortunato).
+\begin{figure}[tph]
+	\centering
+	\includegraphics[width=0.80\linewidth]{../images/naive_kernel_noacc_ms}
+\end{figure}
+
+Osserviamo che i kernel per l'aggiornamento di posizione e velocità crescono in maniera simile. Senza troppe sorprese, sono dominati anche in maniera significativa dal calcolo dell'accelerazione.
+
+\begin{figure}[tph]
+	\centering
+	\includegraphics[width=1\linewidth]{../images/naive_kernel_ms}
+\end{figure}
+
+\begin{figure}[tph]
+	\centering
+	\includegraphics[width=1\linewidth]{../images/naive_ms}
+\end{figure}
+	
+	\subsection{Un esperimento con la local memory}
+	Proviamo a utilizzare la local memory per ridurre il numero di accessi in memoria. In via teorica, dovrebbe abbassare (non asintoticamente parlando) il numero di accessi alla memoria globale, che ribadiamo essere una delle principali fonti di overhead. Tuttavia, sappiamo anche che spesso la cache funziona meglio quando non si interferisce con la local memory: verifichiamo sperimentalmente la nostra ipotesi.
+	\newpage
+	
 	\section{Simulazione approssimata Barnes-Hut su GPU}
 	L'algoritmo Barnes-Hut permette di simulare sistemi a $n$ corpi in maniera approssimata, con precisione arbitraria e complessità asintotica $\mathcal O (n \log n)$. Sfrutta una particolare struttura dati, ossia un quad-tree (figura~\ref{fig:quadtree}) - un albero in cui ogni nodo ha quattro figli - per suddividere ricorsivamente lo spazio,  memorizzare valori relativi al sistema e velocizzare il passaggio più oneroso della simulazione brute-force: il calcolo delle forze (o dell'accelerazione), notoriamente un passaggio a complessità $\mathcal O (n^2)$.
 	
@@ -176,7 +327,7 @@ Questi passaggi sono i più costosi dell'algoritmo, ma che offrono proprio il va
 		float cell_mass_mem = massa della cella (somma delle masse dei figli);
 	\end{verbatim}
 %
-La gestione degli indici in relazione ai figli è banale: in questo blog~\cite{mortimr2020rules} viene fornito un esempio banale:
+La gestione degli indici in relazione ai figli è banale. In~\cite{mortimr2020rules} viene fornito un esempio:
 	
 	\begin{figure}[tbph]
 		\centering
@@ -204,10 +355,12 @@ La gestione degli indici in relazione ai figli è banale: in questo blog~\cite{m
 	\includegraphics[width=1\linewidth]{../images/bounding-box1}
 \end{figure}
 
+
 	
 	
 	\subsection{L'algoritmo complessivo}
 	\subsection{Valutazione delle performance}
+	
 	\newpage
 	\bibliographystyle{unsrt} 
 	\bibliography{report}      

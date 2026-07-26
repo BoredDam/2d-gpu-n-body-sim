@@ -21,7 +21,13 @@ void write_frame_on_disk(const int count, const cl_float2 *bodies, const char *s
 }
 
 
-void write_bounding_box_on_disk(const int count, const cl_float2 *centers, const cl_float *half_size, const char *sim_name, const int time) {
+void write_bounding_box_on_disk(
+    const int count, 
+    const cl_float2 *centers, 
+    const cl_float *half_size, 
+    const char *sim_name, 
+    const int time
+) {
     /* 
     another shitty function to handle writing frames on disk:/
     */
@@ -36,3 +42,49 @@ void write_bounding_box_on_disk(const int count, const cl_float2 *centers, const
     }
     fclose(fp); 
 }
+
+
+void write_naive_stats_on_disk(
+    const double update_pos_ms,
+    const double update_vel_ms,
+    const double update_acc_ms,
+    const int body_count, 
+    const char *sim_name
+) {
+    /* 
+    another shitty function to handle writing frames on disk:/
+    */
+    FILE *fp;
+    char file_name[512];
+    sprintf(file_name, "./tests/%s/%s.csv", sim_name, sim_name);
+    fp = fopen(file_name, "a+");
+    fprintf(fp, "%f,%f,%f,%d\n", update_pos_ms, update_vel_ms, update_acc_ms, body_count);
+    fclose(fp); 
+}
+
+
+void write_bh_stats_on_disk(
+    const double reduction_min_ms, 
+    const double reduction_max_ms, 
+    const double reset_init_tree_ms, 
+    const double build_tree_ms, 
+    const double summarize_tree_ms, 
+    const double compute_acc_ms, 
+    const double update_vel_ms, 
+    const double update_pos_ms,
+    const int body_count, 
+    const char *sim_name
+) {
+    /* 
+    another shitty function to handle writing frames on disk:/
+    */
+    FILE *fp;
+    char file_name[512];
+    sprintf(file_name, "./tests/%s/%s.csv", sim_name, sim_name);
+    fp = fopen(file_name, "a+");
+    fprintf(fp, "%f,%f,%f,%f,%f,%f,%f,%f,%d\n",
+       reduction_min_ms, reduction_max_ms, reset_init_tree_ms, build_tree_ms, 
+       summarize_tree_ms, compute_acc_ms, update_vel_ms, update_pos_ms);
+    fclose(fp); 
+}
+
