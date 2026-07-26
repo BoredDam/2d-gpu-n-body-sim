@@ -9,4 +9,6 @@ main
 *.blg
 *.bcf
 *.bbl
+*.ogv
+*.mp4
 report.run.xml
