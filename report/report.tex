@@ -5,7 +5,8 @@
 \title{\Huge \textbf{Simulazioni \textit{n}-body su GPU: approccio naive e Barnes-Hut}}
 \author{Relazione del progetto di GPGPU - Damiano Trovato}
 \date{}
-
+\usepackage{booktabs}
+\usepackage{longtable}
 \usepackage{graphicx} % Per le immagini
 \usepackage{amsmath} % Simboli matematici
 \usepackage[hidelinks]{hyperref} % Collegamenti ipertestuali
@@ -50,7 +51,7 @@
 	\maketitle
 	
 \begin{abstract}
-Con la seguente relazione si documenta il processo di realizzazione di una simulazione $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni presentate saranno due: un'approccio naive su GPU, e un approccio approssimato Barnes-Hut, sempre su GPU.
+Con la seguente relazione si documenta la realizzazione di simulazioni $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni principali presentate saranno due: un'approccio naive su GPU, e un approccio approssimato Barnes-Hut, sempre su GPU.
 \end{abstract}
 	
 \section{Introduzione}
@@ -111,6 +112,7 @@ Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzion
 	%
 	Il metodo numerico utilizzato nella simulazione, è noto come metodo \textbf{leapfrog}, o metodo della cavallina. Il nome deriva dal modo in cui si alterna l'integrazione della velocità a quella del tempo.
 	
+	
 	\begin{algorithm}[htp]
 		\caption{Integrazione Leapfrog}
 		\begin{algorithmic}[1]
@@ -130,16 +132,13 @@ Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzion
 	I test delle varie soluzioni fornite, saranno effettuate su tre schede video differenti. A seguire, nomi e alcuni dettagli ottenuti con \verb|clinfo|:
 	\begin{itemize}
 		\item \textbf{AMD Radeon RX 6600 CLD 8GB} (discreta).
-		\item \textbf{Intel Arc Pro 130T/140T @ 2.35 GHz} (integrata).
-\begin{verbatim}
-Max compute units                               128
-Max clock frequency                             2350MHz
-Global memory size                              30512316416 (28.42GiB)
-\end{verbatim} 		
-		\item \textbf{inserire scheda video integrata della cpu del computer fisso} (integrata).
+		\item \textbf{Intel Core Ultra 9 285H - Intel Arc Pro 130T/140T} (integrata).
+		\item \textbf{AMD Ryzen 7 7700 - gfx1036} (integrata).
 	\end{itemize}
 	%
 	In tutte le soluzioni affrontate, verranno omesse le operazioni di scrittura a disco, che rappresentano una grande fonte di overhead, ma che sono anche fuori dallo scope del progetto.
+	
+	Le nostre valutazioni avverranno rispetto ad un numero crescente di corpi $n$ da 10 a $\sim 180 000$. Per ogni simulazione, valutiamo il calcolo di 10 frame, in modo da ridurre l'effetto della varianza sul singolo tempo di esecuzione del kernel, su un frame particolarmente fortunato (o sfortunato).
 	\newpage
 	
 	\section{Simulazione parallela naive su GPU}
@@ -229,7 +228,8 @@ Global memory size                              30512316416 (28.42GiB)
 	\end{algorithm}
 	%
 	In realtà, per ogni kernel lanciato, il numero di kernel è quasi sempre arrotondato al primo multiplo di 32 più grande di $n$, per evitare che le performance vengano penalizzate (aggiungerei, in maniera disastrosa) da un numero primo di particelle.
-	\subsection{Valutazione delle performance}
+	
+	\subsection{Benchmarking}
 	Procediamo adesso con un'analisi delle performance dell'algoritmo naive. Prima di parlare con i dati alla mano, ricapitoliamo la complessità asintotica dei singoli passaggi (con una prospettiva seriale):
 	\begin{itemize}
 	\item aggiornamento posizione: $\mathcal O (n)$;
@@ -243,26 +243,58 @@ Global memory size                              30512316416 (28.42GiB)
 		\item aggiornamento velocità: 2, uno all'accelerazione e uno alla velocità, $\mathcal O(1)$;
 		\item aggiornamento accelerazione: $1 + 2n$, $n$ alle posizioni, $n$ alle masse, 1 all'accelerazione, $\mathcal O(n)$;
 	\end{itemize}
-	e ricordando che questo vale per un numero di work-item pari al numero di corpi, ossia $n$.
+	e ricordando che questo vale per un numero di work-item pari al numero di corpi, ossia $n$. Seppur sembra un'osservazione triviale, questo numero fisso di work-item (uguale al numero di corpi) non sarà presente nell'approccio Barnes-Hut proposto.
 	
-	Le nostre valutazioni avverranno rispetto ad un numero crescente di corpi $n$ da 10 a $\sim 180 000$. Per ogni simulazione, valutiamo il calcolo di 10 frame, in modo da ridurre l'effetto della varianza sul singolo tempo di esecuzione del kernel, su un frame particolarmente fortunato (o sfortunato).
-\begin{figure}[tph]
-	\centering
-	\includegraphics[width=0.80\linewidth]{../images/naive_kernel_noacc_ms}
-\end{figure}
-
-Osserviamo che i kernel per l'aggiornamento di posizione e velocità crescono in maniera simile. Senza troppe sorprese, sono dominati anche in maniera significativa dal calcolo dell'accelerazione.
-
-\begin{figure}[tph]
-	\centering
-	\includegraphics[width=1\linewidth]{../images/naive_kernel_ms}
-\end{figure}
-
-\begin{figure}[tph]
-	\centering
-	\includegraphics[width=1\linewidth]{../images/naive_ms}
-\end{figure}
+	Osservando i grafici delle successive pagine, emergono un paio di valutazioni. Entrambe le GPU integrate valutate performano in maniera simile sul calcolo di posizione e velocità. In generale, il calcolo di posizione e velocità cresce linearmente in funzione del numero di corpi.  
 	
+\begin{figure}[tbph]
+	\centering
+	\includegraphics[width=0.85\linewidth]{../images/naive_position_manygpu}
+	\label{fig:naivepositionmanygpu}
+	\caption{Tempo di calcolo della posizione, in funzione del numero di corpi, valutato su tre schede video differenti. In arancione, abbiamo l'unica GPU discreta, la RX6600 di casa AMD.}
+\end{figure}
+
+\begin{figure}[tbph]
+	\centering
+	\includegraphics[width=0.85\linewidth]{../images/naive_speed_manygpu}
+	\caption{Tempo di calcolo della velocità, in funzione del numero di corpi.}
+	\label{fig:naivespeedmanygpu}
+\end{figure}
+
+\newpage
+Meno fortunato è il calcolo dell'accelerazione dei corpi. L'alto numero di operazioni e di accessi alla memoria globale, demolisce totalmente le performance della grafica integrata del Ryzen 7 7700 (Raphael), meno avanzata se messa a confronto con le performance della grafica integrata Intel.
+
+\begin{figure}[tbph]
+	\centering
+	\includegraphics[width=0.73\linewidth]{../images/naive_acc_manygpu}
+	\caption{Tempo di calcolo dell'accelerazione, in funzione del numero di corpi.}
+	\label{fig:naiveaccmanygpu}
+\end{figure}
+\begin{figure}[tbph]
+	\centering
+	\includegraphics[width=0.72\linewidth]{../images/naive_acc_manygpu_no_raphael}
+	\label{fig:naiveaccmanygpunoraphael}
+	\caption{Ai fini di visualizazione, proponiamo lo stesso grafico precedente escludendo l'AMD Raphael.}
+\end{figure}
+
+Seppur tutte le visualizzazioni dei sistemi siano state effettuate in un secondo momento all'interno del software ParaView, è possibile calcolare il tempo massimo ammesso per il calcolo di un fotogramma della simulazione, in contesto realtime. La formula è
+\begin{equation}
+t = \dfrac{1000}{\text{frame per secondo}}\ \operatorname{ms},
+\end{equation}
+%
+per cui, i tempi per calcolare un frame a 30 FPS dovranno essere al più $t_{30} = 33,33 \operatorname{ms}$, per 60 FPS al più la metà, ossia $t_{60} = 16,6 \operatorname{ms}$. Moltiplichiamo queste quantità per 10, per poter riutilizzare i dati già elaborati.
+
+\begin{figure}[tph]
+	\centering
+	\includegraphics[width=0.85\linewidth]{../images/naive_total_ms}
+	\caption{Somma dei tempi dei kernel }
+	\label{fig:naivetotalms}
+\end{figure}
+
+A 30 FPS, Raphael AMD può simulare 22800 corpi, l'Intel ARC fino a 61200 corpi e l'AMD RX6600 fino a 82800 corpi.
+A 60 FPS, Raphael non supera i 15610 corpi, l'Intel ARC i 34400 corpi e l'AMD RX6600 i 58000 corpi. La crescita quadratica dell'algoritmo naive (sia in termini di algoritmo, che in termini di accessi alla memoria globale) è il punto debole dell'algoritmo.
+
+
 	\subsection{Un esperimento con la local memory}
 	Proviamo a utilizzare la local memory per ridurre il numero di accessi in memoria. In via teorica, dovrebbe abbassare (non asintoticamente parlando) il numero di accessi alla memoria globale, che ribadiamo essere una delle principali fonti di overhead. Tuttavia, sappiamo anche che spesso la cache funziona meglio quando non si interferisce con la local memory: verifichiamo sperimentalmente la nostra ipotesi.
 	\newpage
