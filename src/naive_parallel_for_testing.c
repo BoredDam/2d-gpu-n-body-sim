@@ -121,7 +121,7 @@ cl_event update_vel_run(
 
 
 int main(int argc, char *argv[]) {
-    
+
     if (argc < 5) {
         printf("correct usage: %s, [body count], [iterations], [config-name], [test-name]\n", argv[0]);
         return EXIT_FAILURE;

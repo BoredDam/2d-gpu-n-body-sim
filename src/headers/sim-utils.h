@@ -84,7 +84,7 @@ void write_bh_stats_on_disk(
     fp = fopen(file_name, "a+");
     fprintf(fp, "%f,%f,%f,%f,%f,%f,%f,%f,%d\n",
        reduction_min_ms, reduction_max_ms, reset_init_tree_ms, build_tree_ms, 
-       summarize_tree_ms, compute_acc_ms, update_vel_ms, update_pos_ms);
+       summarize_tree_ms, compute_acc_ms, update_vel_ms, update_pos_ms, body_count);
     fclose(fp); 
 }
 

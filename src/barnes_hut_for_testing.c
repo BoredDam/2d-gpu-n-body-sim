@@ -8,7 +8,7 @@
 #define DELTA_TIME 0.02f
 #define CENTER_DISTANCE 10
 #define GALAXIES_PATH "./galaxies/"
-#define OUTPUTS_PATH "./testing/"
+#define OUTPUTS_PATH "./tests/"
 #define SEED 42
 #define MAX_TREE_DEPTH 32
 #define NODE_PER_BODY 8
@@ -774,7 +774,7 @@ int main(int argc, char *argv[]) {
     err = clEnqueueFillBuffer(
         que,
         body_acc_mem,
-        &(cl_int){0},
+        &(cl_float2){0.0f, 0.0f},
         sizeof(cl_float2),
         0,               
         body_acc_buffer_size,
@@ -852,7 +852,7 @@ int main(int argc, char *argv[]) {
     int remaining = body_count;
 
     for (int r = 0; r < reduction_count; r++) {
-        reduction_min_event[r + iterations] = reduction_run(
+        reduction_min_event[r + iterations * reduction_count] = reduction_run(
             que,
             reduce_min_k,
             input_buffer,
@@ -861,7 +861,7 @@ int main(int argc, char *argv[]) {
             (int)(r == (reduction_count - 1)),
             remaining
         );
-        clWaitForEvents(1, &reduction_min_event[r + iterations]);
+        clWaitForEvents(1, &reduction_min_event[r + iterations * reduction_count]);
         remaining = (remaining + 1) / 2;
 
         input_buffer = output_buffer;
@@ -879,7 +879,7 @@ int main(int argc, char *argv[]) {
     remaining = body_count;
     
     for (int r = 0; r < reduction_count; r++) {
-        reduction_max_event[r + iterations] = reduction_run(
+        reduction_max_event[r + iterations * reduction_count] = reduction_run(
             que,
             reduce_max_k,
             input_buffer,
@@ -888,7 +888,7 @@ int main(int argc, char *argv[]) {
             (int)(r == (reduction_count - 1)),
             remaining
         );
-        clWaitForEvents(1, &reduction_max_event[r + iterations]);
+        clWaitForEvents(1, &reduction_max_event[r + iterations * reduction_count]);
         remaining = (remaining + 1) / 2;
 
         input_buffer = output_buffer;
@@ -925,7 +925,7 @@ int main(int argc, char *argv[]) {
 
     #pragma unroll MAX_TREE_DEPTH
     for (int i = 0; i < MAX_TREE_DEPTH; i++) {
-        summarize_tree_event[iterations + i] = summarize_tree_run(
+        summarize_tree_event[iterations * MAX_TREE_DEPTH + i] = summarize_tree_run(
             que,
             summarize_tree_k,
             body_pos_mem,
@@ -936,7 +936,7 @@ int main(int argc, char *argv[]) {
             body_count,
             max_cells
         );
-        clWaitForEvents(1, &summarize_tree_event[iterations]);
+        clWaitForEvents(1, &summarize_tree_event[iterations * MAX_TREE_DEPTH + i]);
     }
     
     compute_acc_walk_event[iterations] = compute_acc_walk_run(
@@ -983,7 +983,7 @@ int main(int argc, char *argv[]) {
         remaining = body_count;
 
         for (int r = 0; r < reduction_count; r++) {
-            reduction_min_event[r + i] = reduction_run(
+            reduction_min_event[r + i * reduction_count] = reduction_run(
                 que,
                 reduce_min_k,
                 input_buffer,
@@ -992,7 +992,7 @@ int main(int argc, char *argv[]) {
                 (int)(r == (reduction_count - 1)),
                 remaining
             );
-            clWaitForEvents(1, &reduction_min_event[r + i]);
+            clWaitForEvents(1, &reduction_min_event[r + i * reduction_count]);
             remaining = (remaining + 1) / 2;
 
             input_buffer = output_buffer;
@@ -1008,7 +1008,7 @@ int main(int argc, char *argv[]) {
         output_buffer = reduction_buffer1;
         remaining = body_count;
         for (int r = 0; r < reduction_count; r++) {
-            reduction_max_event[r + i] = reduction_run(
+            reduction_max_event[r + i * reduction_count] = reduction_run(
                 que,
                 reduce_max_k,
                 input_buffer,
@@ -1017,7 +1017,7 @@ int main(int argc, char *argv[]) {
                 (int)(r == (reduction_count - 1)),
                 remaining
             );
-            clWaitForEvents(1, &reduction_max_event[r + i]);
+            clWaitForEvents(1, &reduction_max_event[r + i * reduction_count]);
             remaining = (remaining + 1) / 2;
             input_buffer = output_buffer;
             if (output_buffer == reduction_buffer1) {
@@ -1053,7 +1053,7 @@ int main(int argc, char *argv[]) {
 
         #pragma unroll MAX_TREE_DEPTH
         for (int j = 0; j < MAX_TREE_DEPTH; j++) {
-            summarize_tree_event[i + j] = summarize_tree_run(
+            summarize_tree_event[i * MAX_TREE_DEPTH + j] = summarize_tree_run(
                 que,
                 summarize_tree_k,
                 body_pos_mem,
@@ -1064,7 +1064,7 @@ int main(int argc, char *argv[]) {
                 body_count,
                 max_cells
             );
-            clWaitForEvents(1, &summarize_tree_event[i + j]);
+            clWaitForEvents(1, &summarize_tree_event[i * MAX_TREE_DEPTH + j]);
         }
 
         compute_acc_walk_event[i] = compute_acc_walk_run(
@@ -1111,20 +1111,28 @@ int main(int argc, char *argv[]) {
         compute_acc_ms += runtime_ms(compute_acc_walk_event[i]);
         update_pos_ms += runtime_ms(update_pos_event[i]);
         update_vel_ms += runtime_ms(update_vel_event[i]);
-        reduction_min_ms += runtime_ms(reduction_min_event[i]);
-        reduction_max_ms += runtime_ms(reduction_max_event[i]);
-        reset_init_tree_ms += runtime_ms(reset_init_tree_event[i]),
-        build_tree_ms += runtime_ms(build_tree_event[i]),
-        summarize_tree_ms += runtime_ms(summarize_tree_event[i]);
+        for (int j = 0; j < reduction_count; j++) {
+            reduction_min_ms += runtime_ms(reduction_min_event[i * reduction_count + j]);
+            reduction_max_ms += runtime_ms(reduction_max_event[i * reduction_count + j]);
+        }
+        reset_init_tree_ms += runtime_ms(reset_init_tree_event[i]);
+        build_tree_ms += runtime_ms(build_tree_event[i]);
+        for (int j = 0; j < MAX_TREE_DEPTH; j++) {
+            summarize_tree_ms += runtime_ms(summarize_tree_event[i * MAX_TREE_DEPTH + j]);
+        }
     }
     
     compute_acc_ms += runtime_ms(compute_acc_walk_event[iterations]);
     update_vel_ms += runtime_ms(update_vel_event[iterations]);
-    reduction_min_ms += runtime_ms(reduction_min_event[iterations]);
-    reduction_max_ms += runtime_ms(reduction_max_event[iterations]);
-    reset_init_tree_ms += runtime_ms(reset_init_tree_event[iterations]),
-    build_tree_ms += runtime_ms(build_tree_event[iterations]),
-    summarize_tree_ms += runtime_ms(summarize_tree_event[iterations]);
+    for (int j = 0; j < reduction_count; j++) {
+            reduction_min_ms += runtime_ms(reduction_min_event[iterations * reduction_count + j]);
+            reduction_max_ms += runtime_ms(reduction_max_event[iterations * reduction_count + j]);
+    }
+    reset_init_tree_ms += runtime_ms(reset_init_tree_event[iterations]);
+    build_tree_ms += runtime_ms(build_tree_event[iterations]);
+    for (int j = 0; j < MAX_TREE_DEPTH; j++) {
+        summarize_tree_ms += runtime_ms(summarize_tree_event[iterations * MAX_TREE_DEPTH + j]);
+    }
 
 
     printf("TIMES:\n\nreduction_min: %fms\nreduction_max: %fms\nreset_init: %fms\nbuild: %fms\nsummarize: %fms\ncompute_acc: %fms\nupdate_vel: %fms\nupdate_pos: %fms\n",
