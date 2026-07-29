@@ -24,10 +24,11 @@ int main(int argc, char *argv[])
 #ifdef __APPLE__
 #include <OpenCL/cl.h>
 #else
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#define CL_TARGET_OPENCL_VERSION 300
 #include <CL/cl.h>
 #endif
 
-#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
