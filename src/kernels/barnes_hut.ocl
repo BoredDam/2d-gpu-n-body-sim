@@ -9,9 +9,9 @@
 #define G 0.2f
 
 kernel void reduce_min(
-    global const float2 *red_bufA,
-    global float2 *red_bufB,
-    global float2 *bounding_box, 
+    global const float2 * restrict red_bufA,
+    global float2 * restrict red_bufB,
+    global float2 * restrict bounding_box, 
     const unsigned int is_last,
     const unsigned int remaining_body_count
 ) {
@@ -36,9 +36,9 @@ kernel void reduce_min(
 
 
 kernel void reduce_max(
-    global const float2 *red_bufA,
-    global float2 *red_bufB,
-    global float2 *bounding_box, 
+    global const float2 * restrict red_bufA,
+    global float2 * restrict red_bufB,
+    global float2 * restrict bounding_box, 
     const unsigned int is_last,
     const unsigned int remaining_body_count
 ) {
@@ -120,11 +120,11 @@ inline int idx_is_cell(int ref, int body_count) {
 
 
 kernel void reset_init_tree(
-    global int *cell_children,
-    global float2 *cell_center,
-    global float *cell_half_size,
-    global float *cell_mass,
-    global float2 *bounding_box,
+    global int * restrict cell_children,
+    global float2 * restrict cell_center,
+    global float * restrict cell_half_size,
+    global float * restrict cell_mass,
+    global const float2 * restrict bounding_box,
     unsigned int max_cells
 ) {
 
@@ -155,11 +155,10 @@ kernel void reset_init_tree(
 
 
 kernel void serial_build_tree(
-    global const float2 *body_pos,
-    global int *cell_children,
-    global float2 *cell_center,
-    global float *cell_half_size,
-    //global int *build_error,
+    global const float2 * restrict body_pos,
+    global int * restrict cell_children,
+    global float2 * restrict cell_center,
+    global float * restrict cell_half_size,
     unsigned int body_count,
     unsigned int max_cells
 ) {
@@ -259,11 +258,11 @@ kernel void serial_build_tree(
 
 
 kernel void summarize_tree(
-    global const float2 *body_pos,
-    global const float *body_mass,
-    global float *cell_mass,
-    global float2 *cell_center_of_mass,
-    global const int *cell_children,
+    global const float2 * restrict body_pos,
+    global const float * restrict body_mass,
+    global float * restrict cell_mass,
+    global float2 * restrict cell_center_of_mass,
+    global const int * restrict cell_children,
     unsigned int body_count,
     unsigned int max_cells
 ) {
@@ -312,14 +311,14 @@ kernel void summarize_tree(
 
 
 kernel void compute_acc_walk(
-    global const float2 *body_pos,
-    global const float *body_mass,
-    global float2 *body_acc,
-    global float *cell_mass,
-    global float2 *cell_center,
-    global float *cell_half_size,
-    global float2 *cell_center_of_mass,
-    global const int *cell_children,
+    global const float2 * restrict body_pos,
+    global const float * restrict body_mass,
+    global float2 * restrict body_acc,
+    global const float * restrict cell_mass,
+    global const float2 * restrict cell_center,
+    global const float * restrict cell_half_size,
+    global const float2 * restrict cell_center_of_mass,
+    global const int * restrict cell_children,
     float const theta_squared,
     unsigned int body_count
 ) {
@@ -402,8 +401,8 @@ kernel void compute_acc_walk(
 
 
 kernel void update_vel(
-    global float2 *body_vel,
-    global const float2 *body_acc,
+    global float2 * restrict body_vel,
+    global const float2 * restrict body_acc,
     const float delta_time,
     const int body_count
 ) {
@@ -419,8 +418,8 @@ kernel void update_vel(
 
 
 kernel void update_pos(
-    global float2 *body_pos,
-    global const float2 *body_vel,
+    global float2 * restrict body_pos,
+    global const float2 * restrict body_vel,
     float delta_time,
     int body_count
 ) {
