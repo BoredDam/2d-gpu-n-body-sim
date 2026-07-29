@@ -1,5 +1,8 @@
 #include <CL/cl.h>
 #include <stdio.h>
+#define OUTPUTS_PATH "./outputs/"
+#define BENCHMARKS_PATH "./tests/"
+#define GALAXIES_PATH "./galaxies/"
 
 void write_frame_on_disk(const int count, const cl_float2 *bodies, const char *sim_name, const int time) {
     /* 
