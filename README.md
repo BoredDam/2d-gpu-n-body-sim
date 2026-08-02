@@ -1,7 +1,5 @@
 # 🌌 Simulazioni *n*-body su GPU tramite C e OpenCL 🔭
 
-![calvin-and-hobbes](./images/calvin-hobbes.webp)
-
 Questo progetto riguarda l'implementazione in C e OpenCL di **simulazioni di sistemi gravitazionali a $n$ corpi**.
 Le simulazioni a $n$ corpi di sistemi gravitazionali, sono fondamentali nell'astrofisica e nella cosmologia, permettendo
 di simulare l'evoluzione di sistemi di corpi celesti.
