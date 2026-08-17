@@ -51,7 +51,7 @@
 	\maketitle
 	
 \begin{abstract}
-Con la seguente relazione si documenta la realizzazione di simulazioni $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni principali presentate saranno due: un'approccio naive su GPU, e un approccio approssimato Barnes-Hut, sempre su GPU.
+Con la seguente relazione si documenta la realizzazione di simulazioni $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni principali presentate saranno tre: un'approccio naive su GPU, un approccio approssimato Barnes-Hut totalmente su GPU (con quad-tree seriale) e un approccio approssimato Barnes-Hut ibrido GPU-CPU.
 \end{abstract}
 	
 \section{Introduzione}
@@ -159,7 +159,7 @@ Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzion
 			\Comment Usciamo dal programma se il work-item è fuori dal dominio dell'input
 			\EndIf
 			\State $a \gets 0$
-			\ForAll{$j \in \operatorname{Range}(n)$}
+			\ForAll{$j \in \{0,\, \dots, n-1\}$}
 			\If{$i = j$} \Continue 
 			\EndIf
 			\State $ r \gets C_{pos}[i] - C_{pos}[j]$
@@ -421,26 +421,10 @@ La condizione relativa al coefficiente $\theta$ può essere riformulata in modi 
 	(\text{dimensione della cella})^2 < (\text{distanza dal centro di massa della cella})^2 \cdot \theta^2.
 \end{equation} 
 
-\begin{algorithm}[h]
-	\caption{Calcolo accelerazione}
-	\begin{algorithmic}[1]
-		\Require array del quad-tree $QT$, array dei corpi $C$
-		\State $i \gets$ id globale del work-item
-		\If{$i >= |C|$}
-		\Return
-		\EndIf
-		\State $\textit{this-body} \gets C[i]$
-		\State $\operatorname{stack-push}(QT[0])$
-		\While{lo stack non è vuoto}
-		\State $\textit{this-node} \gets \operatorname{stack-pop}()$
-		DEVO FINIRE QUESTO PSEUDOCODICE
-		\EndWhile
-	\end{algorithmic}
-\end{algorithm}
-\newpage
 
 \paragraph{Aggiornamento di velocità e posizione}
 Questi ultimi due kernel sono uguali a quelli del metodo naive, quindi non verranno approfonditi ulteriormente.
+
 \subsection{L'algoritmo complessivo}
 
 \subsection{Numero di accessi in memoria globale}
@@ -482,33 +466,52 @@ I passaggi 4, 5 e 6 sono invece molto più onerosi dei precedenti. In particolar
 
 \begin{figure}[tph]
 	\centering
-	\includegraphics[width=0.7\linewidth]{../images/bh_kernel_comparison_theta0_1pt2}
+	\includegraphics[width=0.6\linewidth]{../images/bh_kernel_comparison_theta0_1pt2}
+	\caption{text}
 	\label{fig:bhkernelcomparisontheta01pt2}
 \end{figure}
 
 \begin{figure}[tph]
 	\centering
-	\includegraphics[width=0.7\linewidth]{../images/bh_kernel_comparison_theta0_5pt2}
+	\includegraphics[width=0.6\linewidth]{../images/bh_kernel_comparison_theta0_5pt2}
+	\caption{text}
 	\label{fig:bhkernelcomparisontheta05pt2}
 \end{figure}
 
 Va tuttavia specificata una cosa quando desideriamo mettere a confronto l'approccio naive a quello Barnes-Hut: il vantaggio asintotico diventa un vantaggio effettivo solo con un numero di particelle molto alto. A causa delle risorse ridotte a nostra disposizione (e al bottleneck del build-tree seriale), non ci sarà possibile allocare abbastanza particelle per assistere al vantaggio di BH. Tuttavia, decidendo di ignorare il tempo degli altri kernel, possiamo mettere a confronto esclusivamente i tempi di calcolo delle accelerazioni nei rispettivi algoritmi. Dalla figura~\ref{fig:bhvsnaiveacc} emerge come la scelta del valore di $\theta$ sia cruciale per ottenere lo speedup promesso dall'algoritmo, molto più della scelta dell'hardware: per $\theta = 0.1$ il calcolo dell'accelerazione è più lento che nella simulazione naive. Per $\theta = 0.5$, cresce in maniera simile alla summarize tree.s
 \begin{figure}[tbph]
 	\centering
-	\includegraphics[width=0.7\linewidth]{../images/bh_vs_naive_acc}
+	\includegraphics[width=0.6\linewidth]{../images/bh_vs_naive_acc}
 	\caption{Tempo...}
 	\label{fig:bhvsnaiveacc}
 \end{figure}
-\newpage
-Per questo motivo, fissiamo nuovamente la AMD RX6600 come scheda video di riferimento, e andiamo a vedere come cambia la complessità di questo passaggio, in funzione del parametro $\theta$.
+
 
 {\huge TODO inserire il confronto per theta = 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}
 
-\section{Simulazione Barnes-Hut su GPU con costruzione del quadtree su CPU}
+\section{Simulazione Barnes-Hut ibrida}
 La costruzione seriale del quad-tree rappresenta la principale fonte di overhead nella nostra attuale implementazione dell'algoritmo Barnes-Hut su GPU. Per ridurre al minimo i costi di trasferimento della memoria da CPU a GPU e viceversa, abbiamo affrontato il problema mantenendo tutti i dati su GPU, e usando un kernel eseguito da un solo work-item per la costruzione del quad-tree. Sfruttiamo finalmente il meglio della GPU e della CPU, affidando proprio alla seconda la costruzione dell'albero. 
 
 \subsection{Benchmarking}
+Con questa implementazione ibrida dell'algoritmo Barnes-Hut, riusciamo finalmente a ottenere un vantaggio sull'approccio naive visibile col numero attuale di particelle coinvolte. In figura~\ref{fig:naivebhtotalms} mettiamo a confronto
+\begin{itemize}
+	\item Algoritmo naive su Intel Arc;
+	\item Algoritmo naive su AMD RX6600;
+	\item Algoritmo naive su AMD Raphael;
+	\item Algoritmo Barnes-Hut puro su GPU, Intel Arc, $\theta = 0.5$;
+	\item Algoritmo Barnes-Hut puro su GPU, AMD RX6600, $\theta = 0.5$;
+	\item Algoritmo Barnes-Hut ibrido CPU-GPU, Intel Arc, $\theta = 0.5$;
+	\item Algoritmo Barnes-Hut ibrido CPU-GPU, AMD RX6600, $\theta = 0.5$.
+\end{itemize} 
 
+\begin{figure}[tph]
+	\centering
+	\includegraphics[width=1\linewidth]{../images/naive_bh_total_ms}
+	\caption{}
+	\label{fig:naivebhtotalms}
+\end{figure}
+%
+Questo approccio ibrido rende la nostra implementazione su Barnes-Hut viabile per applicazioni real-time. In particolare, questo vantaggio si ottiene a numeri molto più bassi di particelle sulla Intel Arc rispetto all'AMD RX6600, il che è riconducibile a due motivi fondamentali: un processore più performante, e l'uso della mappatura in memoria (molto conveniente sulle GPU integrate).
 
 	\newpage
 	\bibliographystyle{unsrt} 
