@@ -490,7 +490,8 @@ Va tuttavia specificata una cosa quando desideriamo mettere a confronto l'approc
 {\huge TODO inserire il confronto per theta = 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}
 
 \section{Simulazione Barnes-Hut ibrida}
-La costruzione seriale del quad-tree rappresenta la principale fonte di overhead nella nostra attuale implementazione dell'algoritmo Barnes-Hut su GPU. Per ridurre al minimo i costi di trasferimento della memoria da CPU a GPU e viceversa, abbiamo affrontato il problema mantenendo tutti i dati su GPU, e usando un kernel eseguito da un solo work-item per la costruzione del quad-tree. Sfruttiamo finalmente il meglio della GPU e della CPU, affidando proprio alla seconda la costruzione dell'albero. 
+La costruzione seriale del quad-tree rappresenta la principale fonte di overhead nella nostra attuale implementazione dell'algoritmo Barnes-Hut totalmente su GPU. L'obiettivo era quello di ridurre al minimo i costi di trasferimento della memoria da CPU a GPU e viceversa, usando esclusivamente un kernel eseguito da un solo work-item per la costruzione del quad-tree. 
+Tuttavia, usare un work-item della GPU rispetto che la CPU, rappresenta un enorme collo di bottiglia a causa della frequenza di clock più bassa. Sfruttiamo il meglio dei due hardware, GPU e CPU, affidando proprio alla seconda la costruzione dell'albero, ossai l'unico task esclusivamente seriale. 
 
 \subsection{Benchmarking}
 Con questa implementazione ibrida dell'algoritmo Barnes-Hut, riusciamo finalmente a ottenere un vantaggio sull'approccio naive visibile col numero attuale di particelle coinvolte. In figura~\ref{fig:naivebhtotalms} mettiamo a confronto
@@ -506,8 +507,10 @@ Con questa implementazione ibrida dell'algoritmo Barnes-Hut, riusciamo finalment
 
 \begin{figure}[tph]
 	\centering
-	\includegraphics[width=1\linewidth]{../images/naive_bh_total_ms}
-	\caption{}
+	\includegraphics[width=0.8\linewidth]{../images/naive_bh_total_ms}
+	\caption{Confronto tra algoritmo naive su Intel Arc, AMD RX6600 e AMD Raphael,
+		algoritmo Barnes-Hut puro GPU su Intel Arc e AMD RX6600 con $\theta = 0.5$,
+		algoritmo Barnes-Hut ibrido CPU-GPU su Intel Arc e AMD RX6600 con $\theta = 0.5$.}
 	\label{fig:naivebhtotalms}
 \end{figure}
 %
