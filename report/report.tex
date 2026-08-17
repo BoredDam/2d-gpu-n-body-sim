@@ -291,7 +291,7 @@ A 60 FPS, Raphael non supera i 15610 corpi, l'Intel ARC i 34400 corpi e l'AMD RX
 
 \newpage
 	
-\section{Simulazione approssimata Barnes-Hut su GPU}
+\section{Simulazione Barnes-Hut totalemente su GPU con costruzione del seriale quadtree}
 L'algoritmo Barnes-Hut permette di simulare sistemi a $n$ corpi in maniera approssimata, con precisione arbitraria e complessità asintotica $\mathcal O (n \log n)$. Sfrutta una particolare struttura dati, ossia un quad-tree (figura~\ref{fig:quadtree}), un albero in cui ogni nodo ha quattro figli, per suddividere ricorsivamente lo spazio,  memorizzare valori relativi al sistema e velocizzare il passaggio più oneroso della simulazione brute-force: il calcolo delle forze (o dell'accelerazione), notoriamente un passaggio a complessità $\mathcal O (n^2)$.
 %
 \begin{figure}[tbph]
@@ -503,6 +503,12 @@ Va tuttavia specificata una cosa quando desideriamo mettere a confronto l'approc
 Per questo motivo, fissiamo nuovamente la AMD RX6600 come scheda video di riferimento, e andiamo a vedere come cambia la complessità di questo passaggio, in funzione del parametro $\theta$.
 
 {\huge TODO inserire il confronto per theta = 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}
+
+\section{Simulazione Barnes-Hut su GPU con costruzione del quadtree su CPU}
+La costruzione seriale del quad-tree rappresenta la principale fonte di overhead nella nostra attuale implementazione dell'algoritmo Barnes-Hut su GPU. Per ridurre al minimo i costi di trasferimento della memoria da CPU a GPU e viceversa, abbiamo affrontato il problema mantenendo tutti i dati su GPU, e usando un kernel eseguito da un solo work-item per la costruzione del quad-tree. Sfruttiamo finalmente il meglio della GPU e della CPU, affidando proprio alla seconda la costruzione dell'albero. 
+
+\subsection{Benchmarking}
+
 
 	\newpage
 	\bibliographystyle{unsrt} 
