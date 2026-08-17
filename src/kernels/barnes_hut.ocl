@@ -79,13 +79,13 @@ inline float2 get_new_center(float2 parent_center, float parent_half_size, unsig
     
     switch(quadrant) {
         case 0: new_center = new_center - parent_half_size;
-        break;
+            break;
         case 1: new_center = (float2) {new_center.x + parent_half_size, new_center.y - parent_half_size};
-        break;
+            break;
         case 2: new_center = (float2) {new_center.x - parent_half_size, new_center.y + parent_half_size};
-        break;
+            break;
         case 3: new_center = new_center + parent_half_size;
-        break;
+            break;
         default: new_center = new_center + parent_half_size;
     }
     return new_center;
