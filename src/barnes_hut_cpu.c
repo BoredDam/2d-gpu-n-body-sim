@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "./headers/ocl_boiler.h"
 #include "./headers/sim-utils.h"
 #include <sys/stat.h>
@@ -431,7 +433,7 @@ int main(int argc, char *argv[]) {
     );
     clWaitForEvents(1, &reset_init_tree_event[iterations]);
 
-    /*serial :( tree building on CPU*/
+    /*serial tree building on CPU*/
     build_tree_cpu_run(
         que,
         body_pos_mem,
@@ -1302,41 +1304,26 @@ cl_event reset_init_tree_run(
 
 
 int get_quadrant(cl_float2 pos, cl_float2 center) {
-
     int right = pos.x >= center.x;
     int top = pos.y >= center.y;
     return (top << 1) | right;
 }
 
 
-cl_float2 get_new_center(
-    cl_float2 parent_center,
-    cl_float parent_half_size,
-    unsigned int quadrant
-) {
+cl_float2 get_new_center(cl_float2 parent_center, cl_float parent_half_size, unsigned int quadrant) {
     cl_float2 new_center = parent_center;
     parent_half_size = parent_half_size * 0.5f;
 
     switch(quadrant) {
-        case 0:
-            new_center.x = new_center.x - parent_half_size;
-            new_center.y = new_center.y - parent_half_size;
-        break;
-        case 1:
-            new_center.x = new_center.x + parent_half_size;
-            new_center.y = new_center.y - parent_half_size;
-        break;
-        case 2:
-            new_center.x = new_center.x - parent_half_size;
-            new_center.y = new_center.y + parent_half_size;
-        break;
-        case 3:
-            new_center.x = new_center.x + parent_half_size;
-            new_center.y = new_center.y + parent_half_size;
-        break;
-        default:
-            new_center.x = new_center.x + parent_half_size;
-            new_center.y = new_center.y + parent_half_size;
+        case 0: new_center = (cl_float2) {new_center.x - parent_half_size, new_center.y - parent_half_size};
+            break;
+        case 1: new_center = (cl_float2) {new_center.x + parent_half_size, new_center.y - parent_half_size};
+            break;
+        case 2: new_center = (cl_float2) {new_center.x - parent_half_size, new_center.y + parent_half_size};
+            break;
+        case 3: new_center = (cl_float2) {new_center.x + parent_half_size, new_center.y + parent_half_size};
+            break;
+        default: new_center = (cl_float2) {new_center.x + parent_half_size, new_center.y + parent_half_size};
     }
 
     return new_center;
