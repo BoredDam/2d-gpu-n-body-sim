@@ -58,7 +58,7 @@ Con la seguente relazione si documenta la realizzazione di simulazioni $n$-body 
 In questa sezione offriamo un'introduzione al progetto, dando una definizione del problema $n$-body, i dettagli fisici e matematici e come verranno sviluppati i test.
 
 \subsection{Simulazioni \textit{n}-body}
-Una simulazione a $n$ corpi permette di calcolare l'evoluzione temporale di un sistema costituito da, appunto, $n$ corpi, che interagiscono tra loro con delle forze che dipendono dalla simulazione. Queste simulazioni sono fondamentali, in quanto ogni problema a $n$ corpi non banale, e con non configurazione non banale\footnote{assenza totale di forze, o configurazioni con determinate simmetrie.}, non dispone di una soluzione analitica.
+Una simulazione a $n$ corpi permette di calcolare l'evoluzione temporale di un sistema costituito da, appunto, $n$ corpi, che interagiscono tra loro con delle forze che dipendono dalla simulazione. Queste simulazioni sono fondamentali, in quanto ogni problema a $n$ corpi non banale, e con configurazione non banale\footnote{assenza totale di forze, o configurazioni con determinate simmetrie.}, non dispone di una soluzione analitica.
 
 \begin{figure}[htbp]
 	\centering
@@ -66,7 +66,7 @@ Una simulazione a $n$ corpi permette di calcolare l'evoluzione temporale di un s
 	\caption{Una demo a 180k corpi: \url{https://youtu.be/oSdXonzxpXk?si=4AL8uCfM6irIlBcW}}
 \end{figure}
 %
-Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzioni per osservare l'evoluzione di sistemi cosmologici, seppur simulazioni accurate devono considerare anche i gas, e quindi implementare elementi di fluidodinamica.
+Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzioni per osservare l'evoluzione di sistemi cosmologici.
 
 \newpage
 	\subsection{Aspetti fisici e matematici}
@@ -129,11 +129,11 @@ Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzion
 	Questo metodo numerico, sfasando di $dt/2$ l'integrazione della velocità e della posizione, ottiene errore ridotto, miglior comportamento asintotico e conservazione dell'energia del sistema, rispetto al metodo di Eulero. Sono tecniche di integrazione egualmente onerose, ma il metodo Leapfrog è più accurato e totalmente reversibile~\cite{tarini2019gamephysics3}.
 	
 	\subsection{Studio delle performance su hardware}
-	I test delle varie soluzioni fornite, saranno effettuate su tre schede video differenti. A seguire, nomi e alcuni dettagli ottenuti con \verb|clinfo|:
+	I test delle varie soluzioni fornite, saranno effettuate su tre schede video differenti, ossia
 	\begin{itemize}
-		\item \textbf{AMD Radeon RX 6600 CLD 8GB} (discreta).
-		\item \textbf{Intel Core Ultra 9 285H - Intel Arc Pro 130T/140T} (integrata).
-		\item \textbf{AMD Ryzen 7 7700 - gfx1036} (integrata).
+		\item \textbf{AMD Radeon RX 6600 CLD 8GB} (discreta);
+		\item \textbf{Intel Core Ultra 9 285H - Intel Arc Pro 130T/140T} (integrata);
+		\item \textbf{AMD Ryzen 7 7700 - gfx1036} (integrata), ma questa verrà usata solo sull'algoritmo naive, perché le prestazioni sull'algoritmo Barnes-Hut sono disastrose e poco interessanti da studiare.
 	\end{itemize}
 	%
 	In tutte le soluzioni affrontate, verranno omesse le operazioni di scrittura a disco, che rappresentano una grande fonte di overhead, ma che sono anche fuori dallo scope del progetto.
@@ -229,23 +229,18 @@ Sono fondamentali nell'ambito dell'astrofisica computazionale, offrendo soluzion
 	%
 	In realtà, per ogni kernel lanciato, il numero di kernel è quasi sempre arrotondato al primo multiplo di 32 più grande di $n$, per evitare che le performance vengano penalizzate (aggiungerei, in maniera disastrosa) da un numero primo di particelle.
 	
+	\subsection{Numero di accessi in memoria globale}
+	Per avere una prospettiva più consapevole nello studio delle prestazioni dell'algoritmo, andiamo a osservare il numero di accessi in memoria globale, che sappiamo rappresentare una delle più grandi fonti di bottleneck nell'esecuzione dei kernel degli programmi su GPU. Considerando un solo kernel, questo effettua il seguente numero di accessi in memoria globale:
+	
+	\begin{itemize}
+		\item \textbf{aggiornamento posizione},  uno alla velocità e uno alla posizione, $\mathcal O(1)$;
+		\item \textbf{aggiornamento velocità}, uno all'accelerazione e uno alla velocità, $\mathcal O(1)$;
+		\item \textbf{aggiornamento accelerazione}, $n$ alle posizioni, $n$ alle masse, 1 all'accelerazione, $\mathcal O(n)$;
+	\end{itemize}
+	con $n$ numero di corpi.
+	
 	\subsection{Benchmarking}
-	Procediamo adesso con un'analisi delle performance dell'algoritmo naive. Prima di parlare con i dati alla mano, ricapitoliamo la complessità asintotica dei singoli passaggi (con una prospettiva seriale):
-	\begin{itemize}
-	\item aggiornamento posizione: $\mathcal O (n)$;
-	\item aggiornamento velocità: $\mathcal O (n)$;
-	\item aggiornamento accelerazione: $\mathcal O (n^2)$;
-	\end{itemize}
-	ma anche il numero di accessi in memoria globale, che sappiamo rappresentare una delle più grandi fonti di bottleneck nell'esecuzione dei kernel, che sono:
-	
-	\begin{itemize}
-		\item aggiornamento posizione: 2, uno alla velocità e uno alla posizione, $\mathcal O(1)$;
-		\item aggiornamento velocità: 2, uno all'accelerazione e uno alla velocità, $\mathcal O(1)$;
-		\item aggiornamento accelerazione: $1 + 2n$, $n$ alle posizioni, $n$ alle masse, 1 all'accelerazione, $\mathcal O(n)$;
-	\end{itemize}
-	e ricordando che questo vale per un numero di work-item pari al numero di corpi, ossia $n$. Seppur sembra un'osservazione triviale, questo numero fisso di work-item (uguale al numero di corpi) non sarà presente nell'approccio Barnes-Hut proposto.
-	
-	Osservando i grafici delle successive pagine, emergono un paio di valutazioni. Entrambe le GPU integrate valutate performano in maniera simile sul calcolo di posizione e velocità. In generale, il calcolo di posizione e velocità cresce linearmente in funzione del numero di corpi.  
+	Valutiamo finalmente le prestazioni dell'algoritmo. Dai grafici delle successive pagine, emergono un paio di osservazioni: entrambe le GPU integrate performano in maniera simile sul calcolo di posizione e velocità. In generale, il calcolo di posizione e velocità sembra crescere linearmente in funzione del numero di corpi.  
 	
 \begin{figure}[tbph]
 	\centering
@@ -294,22 +289,18 @@ per cui, i tempi per calcolare un frame a 30 FPS dovranno essere al più $t_{30}
 A 30 FPS, Raphael AMD può simulare 22800 corpi, l'Intel ARC fino a 61200 corpi e l'AMD RX6600 fino a 82800 corpi.
 A 60 FPS, Raphael non supera i 15610 corpi, l'Intel ARC i 34400 corpi e l'AMD RX6600 i 58000 corpi. La crescita quadratica dell'algoritmo naive (sia in termini di algoritmo, che in termini di accessi alla memoria globale) è il punto debole dell'algoritmo.
 
-
-	\subsection{Un esperimento con la local memory}
-	Proviamo a utilizzare la local memory per ridurre il numero di accessi in memoria. In via teorica, dovrebbe abbassare (non asintoticamente parlando) il numero di accessi alla memoria globale, che ribadiamo essere una delle principali fonti di overhead. Tuttavia, sappiamo anche che spesso la cache funziona meglio quando non si interferisce con la local memory: verifichiamo sperimentalmente la nostra ipotesi.
-	\newpage
+\newpage
 	
-	\section{Simulazione approssimata Barnes-Hut su GPU}
-	L'algoritmo Barnes-Hut permette di simulare sistemi a $n$ corpi in maniera approssimata, con precisione arbitraria e complessità asintotica $\mathcal O (n \log n)$. Sfrutta una particolare struttura dati, ossia un quad-tree (figura~\ref{fig:quadtree}) - un albero in cui ogni nodo ha quattro figli - per suddividere ricorsivamente lo spazio,  memorizzare valori relativi al sistema e velocizzare il passaggio più oneroso della simulazione brute-force: il calcolo delle forze (o dell'accelerazione), notoriamente un passaggio a complessità $\mathcal O (n^2)$.
-	
-	
+\section{Simulazione approssimata Barnes-Hut su GPU}
+L'algoritmo Barnes-Hut permette di simulare sistemi a $n$ corpi in maniera approssimata, con precisione arbitraria e complessità asintotica $\mathcal O (n \log n)$. Sfrutta una particolare struttura dati, ossia un quad-tree (figura~\ref{fig:quadtree}), un albero in cui ogni nodo ha quattro figli, per suddividere ricorsivamente lo spazio,  memorizzare valori relativi al sistema e velocizzare il passaggio più oneroso della simulazione brute-force: il calcolo delle forze (o dell'accelerazione), notoriamente un passaggio a complessità $\mathcal O (n^2)$.
+%
 \begin{figure}[tbph]
 	\centering
 	\includegraphics[width=0.75\linewidth]{../images/quadtree}
 	\label{fig:quadtree}
 \end{figure}
 %
-L'idea è la seguente: costruiamo un albero che descrive l'intero sistema, e invece di calcolare l'attrazione tra un corpo $c$ e il resto dei corpi $C$, si visita l'albero, e per ogni altro nodo ci chiediamo ``posso approssimare tutti i figli di questo nodo ad un unico corpo?''. Lo \textbf{sviluppo in moltipoli} ci dice che questo è possibile quando l'area che include questi corpi non è molto grande e quando la distanza da $c$ è elevata: useremo un parametro $\theta$ soglia, che verrà confrontato proprio al rapporto tra le grandezze appena citate. Quando il criterio è rispettato, si accetta il nodo come approssimazione di tutti i corpi della regione associata, con posizione uguale al centro di massa, e massa uguale alla somma delle masse, altrimenti si continua la visita nell'albero. Su sistemi con molteplici regioni dense, ma molto distanti tra loro, l'algoritmo Barnes-Hut performa estremamente bene. 
+L'idea è la seguente: costruiamo un albero che descrive l'intero sistema, e invece di calcolare l'attrazione tra un corpo $c$ e il resto dei corpi $C$ interrogandoli uno ad uno, si visita l'albero, e per ogni altro nodo ci chiediamo ``posso approssimare tutti i figli di questo nodo ad un unico corpo?''. Lo \textbf{sviluppo in moltipoli} ci dice che questa approssimazione è affidabile quando l'area che include questi corpi non è molto grande e quando la distanza da $c$ è elevata: useremo un parametro $\theta$ soglia, che verrà confrontato proprio al rapporto tra le grandezze appena citate. Quando il criterio è rispettato, si accetta il nodo come approssimazione di tutti i corpi della regione associata, con posizione uguale al centro di massa, e massa uguale alla somma delle masse, altrimenti si continua la visita nell'albero. Su sistemi con molteplici regioni dense, ma molto distanti tra loro, l'algoritmo Barnes-Hut performa estremamente bene. 
 
 Tuttavia l'algoritmo paga l'overhead della costruzione del quad-tree, che richiede non pochi passaggi:
 \begin{enumerate}
@@ -318,12 +309,12 @@ Tuttavia l'algoritmo paga l'overhead della costruzione del quad-tree, che richie
 	\item Propagazione nei nodi interni delle masse e dei centri di massa dei rispettivi figli.
 \end{enumerate}
 %
-Questi passaggi sono i più costosi dell'algoritmo, ma che offrono proprio il vantaggio asintotico. Trattiamo adesso come è stato possibile ottenere un vantaggio tramite la programmazione parallela su GPU.
+Questi passaggi sono i più costosi dell'algoritmo, ma sono anche alla base del suo vantaggio asintotico.
 
 	\subsection{I kernel fondamentali}
 	
 	\paragraph{Calcolo dei margini della bounding-box}
-	I primi kernel sono quelli dedicati alla definizione della dimensione della bounding-box (ossia della radice del quad-tree). Usiamo una riduzione parallela per trovare il minimo e il massimo dell'intero sistema particellare, di ciascuna delle due dimensioni. In questo modo, sarà possibile costruire un cubo che contiene l'intero sistema, per ciascun istante di tempo $t$.
+	I primi kernel sono quelli dedicati alla definizione della dimensione della bounding-box (ossia della radice del quad-tree). Usiamo una riduzione parallela per trovare il minimo e il massimo dell'intero sistema particellare, sia su $x$ che su $y$. In questo modo, sarà possibile costruire un quadrato (la bounding-box) che conterrà l'intero sistema.
 	
 	\begin{algorithm}
 		\caption{Kernel per la riduzione parallela (ricerca del minimo o massimo)}
@@ -340,59 +331,179 @@ Questi passaggi sono i più costosi dell'algoritmo, ma che offrono proprio il va
 			\State $val \gets \min(val, A[i+1])$ \Comment $\max(val, A[i+1])$ nella ricerca del massimo
 			\EndIf
 			\If{è l'ultima riduzione}
-			\State $BoundingBox[\verb|MIN_INDEX|] \gets val$ \Comment $BoundingBox[\verb|MAX_INDEX|]$ nella ricerca del
+			\State $BoundingBox[\verb|MIN_INDEX|] \gets val$ \Comment $BoundingBox[\verb|MAX_INDEX|]$ nella ricerca del massimo
 			\EndIf
 			\State $B[j] \gets val$
 		\end{algorithmic}
 	\end{algorithm}
 	%
-	Questo kernel sarà lanciato fino a quando il minimo (massimo) si troverà alla posizione 0 dell'ultimo array usato. Nel codice host, abbiamo deciso di usare due array, scambiando ogni volta l'array di input e quello d'output (una sorta di ping-pong tra gli array).
+	Questo kernel sarà lanciato fino a quando il minimo (massimo) si troverà alla posizione 0 dell'ultimo array usato. Precisamente, verrà lanciato per $\lceil \log_2(n)\rceil$ volte, con $n$ numero di particelle.
+	
+	Nel codice host, abbiamo deciso di usare due array, scambiando ogni volta l'array di input e quello d'output (in una sorta di ping-pong tra gli array per ridurre al minimo la memoria usata).
 	
 	\paragraph{Costruzione del quad-tree}
-	Il secondo kernel che presentiamo, è quello relativo alla \textbf{costruzione del quad-tree}. Prima di presentare il kernel, definiamo in cosa consiste il nostro quad-tree in termini di strutture dati. Necessitiamo infatti un modo per linearizzare un quad-tree in un array (sia per le performance, che per le capacità)
+	Il secondo kernel che presentiamo, è quello relativo alla \textbf{costruzione del quad-tree}. Prima di presentare il kernel, definiamo in cosa consiste l'implementazione del nostro quad-tree. Non possiamo usare un approccio OOP o degli array di struct, ma possiamo creare degli array, uno per ciascuno dei campi dei nodi dell'albero. Otteniamo quindi
 	
 	\begin{verbatim}
-		int cell_children = array dei figli di ciascuna cella. 4 volte più lungo degli altri;
-		float2 cell_center = array delle posizioni (x,y) dei centri delle celle;
-		float cell_half_size = array di metà lunghezza del lato delle celle;
-		float2 cell_center_of_mass_mem = centro di massa della cella (basato sui figli);
-		float cell_mass_mem = massa della cella (somma delle masse dei figli);
+		int cell_children = figli di ciascuna nodo. 4 volte più lungo degli altri;
+		float2 cell_center =  posizione del centro della cella del nodo;
+		float cell_half_size = metà lunghezza della cella associata al nodo;
+		float2 cell_center_of_mass = centro di massa della nodo;
+		float cell_mass = massa del nodo;
 	\end{verbatim}
 %
-La gestione degli indici in relazione ai figli è banale. In~\cite{mortimr2020rules} viene fornito un esempio:
-	
-	\begin{figure}[tbph]
-		\centering
-		\includegraphics[width=1\linewidth]{../images/mortim2020}
-	\end{figure}
-	Nel nostro caso, nell'array dedicato ai figli, i 4 figli della radice si avranno in posizione 0,1,2,3.
-	La profondità di un indice $i$ nell'albero può inoltre essere determinata da $\lceil\log_4(i)\rceil+1$. A parità di profondità, l'ordinamento dei quattro nodi rimane a nostra discrezione. Stabiliamo la seguente suddivisione, rispetto alla suddivisione dei quadranti:
-	
+La struttura gerarchica è permessa dal primo array, \verb|cell_children|, che contiene in posizione $4i + j$ il $j$-esimo figlio del nodo $i$. 
+ Stabiliamo inoltre la seguente convenzione per associare un indice a ogni quadrante della rispettiva cella:
 	\begin{figure}[tbph]
 		\centering
 		\includegraphics[width=0.75\linewidth]{../images/codequadrant}
 	\end{figure}
+
+Inoltre, l'array \verb|cell_children| contiene al suo interno riferimenti a entità di tipi differenti, ossia nodi e corpi. Stabiliamo la convenzione per cui tutti gli indici che fanno riferimento a nodi dell'albero, hanno indice maggiore o uguale al numero di corpi. Questo significa che, quando memorizziamo l'indice ad un nodo, alla sua posizione del quad-tree va sommato il numero di corpi. Quando invece vogliamo usare l'indice per accedere ad un altro nodo, dobbiamo prima sottrarre la stessa quantità.
 	
-	In questo modo, accedere ai quattro figli di un nodo $i$ consisterà nel calcolo $4i + j$, con $j=0$ per il figlio che indica il quadrante in basso a sinistra, $j=1$ per il quadrante in basso a destra, $J=2$ per il quadrante in alto a sinistra e $j=3$ per il quadrante in alto a destra. 
+	In letteratura non si trovano esempi di algoritmi di costruzione di quad-tree paralleli su GPU senza ausilio delle funzioni atomiche:uUsiamo quindi un approccio seriale, mantenendo tuttavia i dati su GPU, per risparmiare sullo scambio dati CPU-GPU. 
+	Ci rifaremo alla costruzione del quad-tree dell'algoritmo originale.
+%\begin{figure}[htpb]
+%	\centering
+%	\includegraphics[width=1\linewidth]{../images/bounding-box1}
+%\end{figure}
+\paragraph{Reset e inizializzazione dell'albero} Questo kernel si occupa del reset della struttura ad albero. Vengono posti nulli i valori del centro di ciascun nodo e dell'halfsize, a -1 le masse e gli indici dei figli. Il kernel con $id=0$ fa uno step in più, ossia settare la posizione del centro e l'halfsize in funzione del risultato della riduzione. Questo kernel in realtà viene eseguito prima della costruzione del quadtree, ma ai fini della spiegazione, abbiamo preferito introdurlo dopo. Viene lanciato per ciascun nodo dell'albero.
+\paragraph{Propagazione delle masse e dei centri di massa}
+In letteratura gli approcci ottimali per la summarize-tree sfruttano spesso funzioni atomiche; tuttavia, è possibile implementare un kernel da lanciare più volte per compiere lo stesso lavoro.
+
+Il kernel funziona in questo modo: dato un nodo $A$, calcolane la massa (e il centro di massa) osservandone i figli. Se uno di questi figli ha valori non inizializzati (questo avviene quando non si è ancora calcolata la loro massa), esci dal kernel e .non modificare la massa del nodo (e nemmeno il centro di massa). 
+Questo kernel va lanciato sull'intero quad-tree per un numero di volte pari alla sua altezza, ottenendo una sorta di ``onda'' di pesi che si propagano dal basso verso l'alto.
+\newpage
+\begin{algorithm}[h]
+	\caption{Summarize tree (propagazione masse e centri di massa)}
+	\begin{algorithmic}[1]
+		\Require array del quad-tree $QT$, array dei corpi $C$
+		\State $i \gets$ id globale del work-item
+		\If{$i >= \operatorname{len}(QT)$}
+		\Return
+		\EndIf
+		\State $\textit{total-mass}\gets 0$
+		\State $\textit{center-of-mass}\gets (0,\,0)$
+		\State $\textit{weighted-pos}\gets (0,\,0)$
+		\ForAll {figli di $QTree[i]$}
+		\State $j \gets \text{indice del figlio}$
+		\If {$j$ è un indice valido}
+		\State $\textit{total-mass} \gets \textit{total-mass} + QT[j]_{mass}$
+		\State $\textit{weighted-pos} \gets QT[j]_{pos} \cdot QT[j]_{mass}$
+		\Else
+		\State\Return
+		\EndIf
+		\EndFor
+		\State $QT[i]_{mass} \gets \textit{total-mass}$
+		\State $QT[i]_{\textit{center-of-mass}} \gets \textit{weighted-pos} / \textit{total-mass}$
+	\end{algorithmic}
+\end{algorithm}
+
+In realtà, nelle istruzioni 9-15 va considerato pure un controllo sul tipo di figlio. $j$ potrebbe infatti essere un indice ad un nodo o un indice ad un corpo. Nel primo caso il calcolo coinvolgerà l'accesso ad un altro slot del quad-tree, nel secondo caso ad uno slot dell'array dei corpi $C$.
 	
-	In letteratura non si trovano esempi di algoritmi di costruzione di quad-tree paralleli su GPU senza ausilio delle funzioni atomiche. Usiamo quindi un approccio seriale, mantenendo tuttavia i dati su GPU, per risparmiare sullo scambio dati CPU-GPU. 
-	Ci rifaremo quindi alla costruzione del quad-tree dell'algoritmo originale, ossia.
-	\begin{enumerate}
-		\item Se il nodo corrente $c$ non contiene un corpo, inseriamo il corpo $b$ in $c$.
-		\item Se il nodo $c$ è un nodo interno, inseriamo il corpo $b$
-	\end{enumerate}
-	
-\begin{figure}[htbp]
+\paragraph{Calcolo dell'accelerazione usando il quad-tree}
+Questa parte dell'algoritmo è imbarazzantemente parallelizzabile: tuttavia, l'algoritmo di attraversamento di un albero come il quad-tree, se non implementabile tramite ricorsione, richiede l'utilizzo di uno stack, il che rende questo kernel un altro elemento interessante.
+
+Il kernel va lanciato su ciascuno dei corpi (chiameremo il nostro corpo $C[i]$), e procede nel seguente modo:
+\begin{enumerate}
+	\item si inserisce nello stack la radice del quad-tree (ossia l'intero sistema);
+	\item finché lo stack non è vuoto, si estrae un elemento dallo stack;
+	\item se l'elemento è un corpo, calcola regolarmente l'accelerazione indotta da quest'ultimo su $C[i]$. Se il corpo estratto è $C[i]$ stesso, si ignora;
+	\item se l'elemento è un nodo associato a una cella che \textbf{non} contiene $C[i]$, possiamo verificare la condizione
+	\begin{equation}
+	\dfrac{\text{dimensione della cella}}{\text{distanza dal centro di massa della cella}} < \theta,
+	\end{equation}
+	se questa è vera, allora possiamo calcolare l'accelerazione sull'intero albero che ha come radice il nodo in questione usando la sua massa e il uso centro di massa come posizione;
+	\item  se nessuna tra le condizioni in 3 e 4 sono rispettate, allora si inseriscono i quattro figli del nodo nello stack;
+\end{enumerate}
+La condizione relativa al coefficiente $\theta$ può essere riformulata in modi equivalenti, che permettono di risparmiare su operazioni di radici quadrate e divisioni. Nel nostro caso, useremo
+\begin{equation}
+	(\text{dimensione della cella})^2 < (\text{distanza dal centro di massa della cella})^2 \cdot \theta^2.
+\end{equation} 
+
+\begin{algorithm}[h]
+	\caption{Calcolo accelerazione}
+	\begin{algorithmic}[1]
+		\Require array del quad-tree $QT$, array dei corpi $C$
+		\State $i \gets$ id globale del work-item
+		\If{$i >= |C|$}
+		\Return
+		\EndIf
+		\State $\textit{this-body} \gets C[i]$
+		\State $\operatorname{stack-push}(QT[0])$
+		\While{lo stack non è vuoto}
+		\State $\textit{this-node} \gets \operatorname{stack-pop}()$
+		DEVO FINIRE QUESTO PSEUDOCODICE
+		\EndWhile
+	\end{algorithmic}
+\end{algorithm}
+\newpage
+
+\paragraph{Aggiornamento di velocità e posizione}
+Questi ultimi due kernel sono uguali a quelli del metodo naive, quindi non verranno approfonditi ulteriormente.
+\subsection{L'algoritmo complessivo}
+
+\subsection{Numero di accessi in memoria globale}
+Riproponiamo di nuovo le osservazioni sul numero di accessi in memoria globale:
+
+\begin{itemize}
+	\item \textbf{riduzione parallela (minimo e massimo)}, $2$ accessi alla posizione, ma il kernel viene rilanciato $\log n$ volte, quindi $\mathcal O(\log n)$;
+	\item \textbf{costruzione dell'albero},
+	\item \textbf{propagazione dei pesi e dei centri di massa}, ogni kernel viene rilanciato per \verb|MAX_TREE_DEPTH| volte, e si accede sempre a 2 campi dei 4 figli.  $\mathcal O(1)$;
+	\item \textbf{aggiornamento accelerazione}, dipende pesantemente dalla distribuzione di partenza. COn 
+	\item \textbf{aggiornamento velocità}, uno all'accelerazione e uno alla velocità, $\mathcal O(1)$;
+	\item \textbf{aggiornamento posizione},  uno alla velocità e uno alla posizione, $\mathcal O(1)$; 
+\end{itemize}
+con $n$ numero di corpi.
+
+\newpage
+\subsection{Benchmarking}
+La nostra implementazione dell'algoritmo Barnes-Hut si compone di molteplici kernel:
+\begin{enumerate}
+	\item riduzione per trovare il minimo;
+	\item riduzione per trovare il massimo;
+	\item reset dell'albero;
+	\item costruzione dell'albero;
+	\item propagazione delle masse e dei centri di massa nell'albero;
+	\item calcolo dell'accelerazione;
+	\item aggiornamento della velocità;
+	\item aggiornamento della posizione.
+\end{enumerate}
+
+Tra questi passaggi, 1, 2, 3, 7 e 8 risultano essere quelli meno onerosi della nostra implementazione. Fissiamo $\theta = 0.1$ e scegliamo come GPU di riferimento la AMD RX6600. In figura~\ref{fig:bhkernelcomparisontheta01}, il kernel più oneroso appare essere quello di reset dell'albero, il che risulta riconducibile all'alto numero di accessi in memoria richiesti.
+
+\begin{figure}[tph]
 	\centering
-	\includegraphics[width=1\linewidth]{../images/bounding-box1}
+	\includegraphics[width=0.7\linewidth]{../images/bh_kernel_comparison_theta0_1}
+	\label{fig:bhkernelcomparisontheta01}
 \end{figure}
 
+I passaggi 4, 5 e 6 sono invece molto più onerosi dei precedenti. In particolare, nella nostra implementazione, la costruzione dell'albero (4) seriale è un vero e proprio collo di bottiglia per il resto dell'algoritmo. La propagazione delle masse (5) non cresce in maniera significativa ($\sim273ms$ su $\sim 180000$ particelle), ma più velocemente dei kernel precedenti. Citiamo per ultimo il kernel dedicato al calcolo dell'accelerazione (6): l'intero algoritmo Barnes-Hut punta sull'ottimizzazione di questo passaggio tramite l'approssimazione sensibile al parametro $\theta$. Ne consegue che l'algoritmo vada valutato anche in funzione di quest'ultimo. Se in figura~\ref{fig:bhkernelcomparisontheta01pt2} abbiamo i kernel 4,5 e 6 con $\theta = 0.1$, gli stessi sono messi a confronto con $\theta = 0.5$ in figura~\ref{fig:bhkernelcomparisontheta05pt2}. Osserviamo un importante guadagno in prestazioni, che sottolinea la potenza dell'approssimazione Barnes-Hut.
 
-	
-	
-	\subsection{L'algoritmo complessivo}
-	\subsection{Valutazione delle performance}
-	
+\begin{figure}[tph]
+	\centering
+	\includegraphics[width=0.7\linewidth]{../images/bh_kernel_comparison_theta0_1pt2}
+	\label{fig:bhkernelcomparisontheta01pt2}
+\end{figure}
+
+\begin{figure}[tph]
+	\centering
+	\includegraphics[width=0.7\linewidth]{../images/bh_kernel_comparison_theta0_5pt2}
+	\label{fig:bhkernelcomparisontheta05pt2}
+\end{figure}
+
+Va tuttavia specificata una cosa quando desideriamo mettere a confronto l'approccio naive a quello Barnes-Hut: il vantaggio asintotico diventa un vantaggio effettivo solo con un numero di particelle molto alto. A causa delle risorse ridotte a nostra disposizione (e al bottleneck del build-tree seriale), non ci sarà possibile allocare abbastanza particelle per assistere al vantaggio di BH. Tuttavia, decidendo di ignorare il tempo degli altri kernel, possiamo mettere a confronto esclusivamente i tempi di calcolo delle accelerazioni nei rispettivi algoritmi. Dalla figura~\ref{fig:bhvsnaiveacc} emerge come la scelta del valore di $\theta$ sia cruciale per ottenere lo speedup promesso dall'algoritmo, molto più della scelta dell'hardware: per $\theta = 0.1$ il calcolo dell'accelerazione è più lento che nella simulazione naive. Per $\theta = 0.5$, cresce in maniera simile alla summarize tree.s
+\begin{figure}[tbph]
+	\centering
+	\includegraphics[width=0.7\linewidth]{../images/bh_vs_naive_acc}
+	\caption{Tempo...}
+	\label{fig:bhvsnaiveacc}
+\end{figure}
+\newpage
+Per questo motivo, fissiamo nuovamente la AMD RX6600 come scheda video di riferimento, e andiamo a vedere come cambia la complessità di questo passaggio, in funzione del parametro $\theta$.
+
+{\huge TODO inserire il confronto per theta = 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}
+
 	\newpage
 	\bibliographystyle{unsrt} 
 	\bibliography{report}      
