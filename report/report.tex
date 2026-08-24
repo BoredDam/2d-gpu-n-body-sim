@@ -298,6 +298,7 @@ L'algoritmo Barnes-Hut permette di simulare sistemi a $n$ corpi in maniera appro
 	\centering
 	\includegraphics[width=0.75\linewidth]{../images/quadtree}
 	\label{fig:quadtree}
+	\caption{Bounding box e quad-tree nell'algoritmo Barnes-Hut, immagine tratta da \url{https://arborjs.org/docs/barnes-hut}}
 \end{figure}
 %
 L'idea è la seguente: costruiamo un albero che descrive l'intero sistema, e invece di calcolare l'attrazione tra un corpo $c$ e il resto dei corpi $C$ interrogandoli uno ad uno, si visita l'albero, e per ogni altro nodo ci chiediamo ``posso approssimare tutti i figli di questo nodo ad un unico corpo?''. Lo \textbf{sviluppo in moltipoli} ci dice che questa approssimazione è affidabile quando l'area che include questi corpi non è molto grande e quando la distanza da $c$ è elevata: useremo un parametro $\theta$ soglia, che verrà confrontato proprio al rapporto tra le grandezze appena citate. Quando il criterio è rispettato, si accetta il nodo come approssimazione di tutti i corpi della regione associata, con posizione uguale al centro di massa, e massa uguale alla somma delle masse, altrimenti si continua la visita nell'albero. Su sistemi con molteplici regioni dense, ma molto distanti tra loro, l'algoritmo Barnes-Hut performa estremamente bene. 
@@ -357,6 +358,7 @@ La struttura gerarchica è permessa dal primo array, \verb|cell_children|, che c
 	\begin{figure}[tbph]
 		\centering
 		\includegraphics[width=0.75\linewidth]{../images/codequadrant}
+		\caption{Convenzione usata nel codice per Barnes-Hut per associare un corpo ad un quadrante nota la posizione del corpo e il centro del quadrante.}
 	\end{figure}
 
 Inoltre, l'array \verb|cell_children| contiene al suo interno riferimenti a entità di tipi differenti, ossia nodi e corpi. Stabiliamo la convenzione per cui tutti gli indici che fanno riferimento a nodi dell'albero, hanno indice maggiore o uguale al numero di corpi. Questo significa che, quando memorizziamo l'indice ad un nodo, alla sua posizione del quad-tree va sommato il numero di corpi. Quando invece vogliamo usare l'indice per accedere ad un altro nodo, dobbiamo prima sottrarre la stessa quantità.
@@ -426,19 +428,21 @@ La condizione relativa al coefficiente $\theta$ può essere riformulata in modi 
 Questi ultimi due kernel sono uguali a quelli del metodo naive, quindi non verranno approfonditi ulteriormente.
 
 \subsection{L'algoritmo complessivo}
-
-\subsection{Numero di accessi in memoria globale}
-Riproponiamo di nuovo le osservazioni sul numero di accessi in memoria globale:
-
-\begin{itemize}
-	\item \textbf{riduzione parallela (minimo e massimo)}, $2$ accessi alla posizione, ma il kernel viene rilanciato $\log n$ volte, quindi $\mathcal O(\log n)$;
-	\item \textbf{costruzione dell'albero},
-	\item \textbf{propagazione dei pesi e dei centri di massa}, ogni kernel viene rilanciato per \verb|MAX_TREE_DEPTH| volte, e si accede sempre a 2 campi dei 4 figli.  $\mathcal O(1)$;
-	\item \textbf{aggiornamento accelerazione}, dipende pesantemente dalla distribuzione di partenza. COn 
-	\item \textbf{aggiornamento velocità}, uno all'accelerazione e uno alla velocità, $\mathcal O(1)$;
-	\item \textbf{aggiornamento posizione},  uno alla velocità e uno alla posizione, $\mathcal O(1)$; 
-\end{itemize}
-con $n$ numero di corpi.
+\begin{algorithm}[htp]
+	\caption{Simulazione $n$-body Barnes-Hut}
+	\begin{algorithmic}[1]
+		\Require array dei corpi $C$, $n = |C|$, delta tempo $dt$, numero di  iterazioni $t$
+		\State
+		\State lancia $n$ kernel \textbf{accelerazione naive} su $C$ con delta tempo $dt$ 
+		\State lancia $n$ kernel \textbf{calcolo velocità} su $C$ con delta tempo $dt/2$ 
+		\For{t}
+		\State lancia $n$ kernel \textbf{calcolo posizione} su $C$ con delta tempo $dt$ 
+		\State lancia $n$ kernel \textbf{accelerazione naive} su $C$ con delta tempo $dt$ 
+		\State lancia $n$ kernel \textbf{calcolo velocità} su $C$ con delta tempo $dt$ 
+		\EndFor
+		
+	\end{algorithmic}
+\end{algorithm}
 
 \newpage
 \subsection{Benchmarking}
@@ -460,6 +464,7 @@ Tra questi passaggi, 1, 2, 3, 7 e 8 risultano essere quelli meno onerosi della n
 	\centering
 	\includegraphics[width=0.7\linewidth]{../images/bh_kernel_comparison_theta0_1}
 	\label{fig:bhkernelcomparisontheta01}
+	\caption{Tempo dei kernel di Barnes-Hut per la riduzione (minimo e massimo della bounding-box), reset e inizializzazione dell'albero, aggiornamento della velocità e della posizione.}
 \end{figure}
 
 I passaggi 4, 5 e 6 sono invece molto più onerosi dei precedenti. In particolare, nella nostra implementazione, la costruzione dell'albero (4) seriale è un vero e proprio collo di bottiglia per il resto dell'algoritmo. La propagazione delle masse (5) non cresce in maniera significativa ($\sim273ms$ su $\sim 180000$ particelle), ma più velocemente dei kernel precedenti. Citiamo per ultimo il kernel dedicato al calcolo dell'accelerazione (6): l'intero algoritmo Barnes-Hut punta sull'ottimizzazione di questo passaggio tramite l'approssimazione sensibile al parametro $\theta$. Ne consegue che l'algoritmo vada valutato anche in funzione di quest'ultimo. Se in figura~\ref{fig:bhkernelcomparisontheta01pt2} abbiamo i kernel 4,5 e 6 con $\theta = 0.1$, gli stessi sono messi a confronto con $\theta = 0.5$ in figura~\ref{fig:bhkernelcomparisontheta05pt2}. Osserviamo un importante guadagno in prestazioni, che sottolinea la potenza dell'approssimazione Barnes-Hut.
@@ -467,14 +472,15 @@ I passaggi 4, 5 e 6 sono invece molto più onerosi dei precedenti. In particolar
 \begin{figure}[tph]
 	\centering
 	\includegraphics[width=0.6\linewidth]{../images/bh_kernel_comparison_theta0_1pt2}
-	\caption{text}
+	\caption{Plot dei tempi dei kernel di costruzione (seriale) dell'albero, propagazione di masse e centri di massa e calcolo dell'accelerazione in funzione del numero di corpi, con $\theta = 0.1$}
 	\label{fig:bhkernelcomparisontheta01pt2}
 \end{figure}
 
 \begin{figure}[tph]
 	\centering
 	\includegraphics[width=0.6\linewidth]{../images/bh_kernel_comparison_theta0_5pt2}
-	\caption{text}
+	
+	\caption{Plot dei tempi dei kernel di costruzione (seriale) dell'albero, propagazione di masse e centri di massa e calcolo dell'accelerazione in funzione del numero di corpi, con $\theta = 0.1$}
 	\label{fig:bhkernelcomparisontheta05pt2}
 \end{figure}
 
@@ -482,7 +488,7 @@ Va tuttavia specificata una cosa quando desideriamo mettere a confronto l'approc
 \begin{figure}[tbph]
 	\centering
 	\includegraphics[width=0.6\linewidth]{../images/bh_vs_naive_acc}
-	\caption{Tempo...}
+	\caption{Plot dei tempi dei kernel di calcolo dell'accelerazione nell'approccio naive e nell'approccio Barnes-Hut con $\theta = 0.1$ e $\theta = 0.5$.}
 	\label{fig:bhvsnaiveacc}
 \end{figure}
 
