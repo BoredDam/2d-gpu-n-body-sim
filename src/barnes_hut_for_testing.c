@@ -853,7 +853,7 @@ cl_event compute_acc_walk_run(
         &body_pos
     );
     ocl_check(err, "clSetKernelArg body_pos");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -862,7 +862,7 @@ cl_event compute_acc_walk_run(
         &body_mass
     );
     ocl_check(err, "clSetKernelArg body_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -871,7 +871,7 @@ cl_event compute_acc_walk_run(
         &body_acc
     );
     ocl_check(err, "clSetKernelArg body_acc");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -880,7 +880,7 @@ cl_event compute_acc_walk_run(
         &cell_mass
     );
     ocl_check(err, "clSetKernelArg cell_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -889,7 +889,7 @@ cl_event compute_acc_walk_run(
         &cell_center
     );
     ocl_check(err, "clSetKernelArg cell_center");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -898,7 +898,7 @@ cl_event compute_acc_walk_run(
         &cell_half_size
     );
     ocl_check(err, "clSetKernelArg cell_half_size");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -907,7 +907,7 @@ cl_event compute_acc_walk_run(
         &cell_center_of_mass
     );
     ocl_check(err, "clSetKernelArg cell_center_of_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -916,7 +916,7 @@ cl_event compute_acc_walk_run(
         &cell_children
     );
     ocl_check(err, "clSetKernelArg cell_children");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -925,7 +925,7 @@ cl_event compute_acc_walk_run(
         &theta_squared
     );
     ocl_check(err, "clSetKernelArg theta_squared");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -934,7 +934,7 @@ cl_event compute_acc_walk_run(
         &body_count
     );
     ocl_check(err, "clSetKernelArg body_count");
-    arg++;
+    ++arg;
 
     err = clEnqueueNDRangeKernel(
         que,
@@ -971,28 +971,28 @@ cl_event update_pos_run(
         arg, 
         sizeof(body_pos), &body_pos);
     ocl_check(err,"clSetKernelArg body_pos");
-    arg++;
+    ++arg;
     
     err = clSetKernelArg(
         k, 
         arg, 
         sizeof(body_vel), &body_vel);
     ocl_check(err,"clSetKernelArg body_vel");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k, 
         arg, 
         sizeof(delta_time), &delta_time);
     ocl_check(err,"clSetKernelArg update_pos delta_time");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k, 
         arg, 
         sizeof(body_count), &body_count);
     ocl_check(err,"clSetKernelArg body_count");
-    arg++;
+    ++arg;
 
     cl_int error = clEnqueueNDRangeKernel(que, k, 1, NULL, gws, NULL, 0, NULL, &event);
     ocl_check(error, "clEnqueueNDRangeKernel");
@@ -1022,7 +1022,7 @@ cl_event update_vel_run(
         &body_vel
     );
     ocl_check(err,"clSetKernelArg body_vel");
-    arg++;
+    ++arg;
     
     err = clSetKernelArg(
         k, 
@@ -1031,7 +1031,7 @@ cl_event update_vel_run(
         &body_acc
     );
     ocl_check(err,"clSetKernelArg body_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k, 
@@ -1040,7 +1040,7 @@ cl_event update_vel_run(
         &delta_time
     );
     ocl_check(err,"clSetKernelArg update_pos delta_time");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k, 
@@ -1091,7 +1091,7 @@ cl_event reduction_run(
         &red_bufA
     );
     ocl_check(err, "clSetKernelArg red_bufA");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k, 
@@ -1100,7 +1100,7 @@ cl_event reduction_run(
         &red_bufB
     );
     ocl_check(err, "clSetKernelArg red_bufB");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1109,7 +1109,7 @@ cl_event reduction_run(
         &bounding_box
     );
     ocl_check(err, "clSetKernelArg bounding_box");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1118,7 +1118,7 @@ cl_event reduction_run(
         &is_last
     );
     ocl_check(err, "clSetKernelArg is_last");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1170,7 +1170,7 @@ cl_event reset_init_tree_run(
         &cell_children
     );
     ocl_check(err, "clSetKernelArg cell_children");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1179,7 +1179,7 @@ cl_event reset_init_tree_run(
         &cell_center
     );
     ocl_check(err, "clSetKernelArg cell_center");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1188,7 +1188,7 @@ cl_event reset_init_tree_run(
         &cell_half_size
     );
     ocl_check(err, "clSetKernelArg cell_half_size");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1197,7 +1197,7 @@ cl_event reset_init_tree_run(
         &cell_mass
     );
     ocl_check(err, "clSetKernelArg cell_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1206,7 +1206,7 @@ cl_event reset_init_tree_run(
         &bounding_box
     );
     ocl_check(err, "clSetKernelArg bounding_box");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1215,7 +1215,7 @@ cl_event reset_init_tree_run(
         &max_cells
     );
     ocl_check(err, "clSetKernelArg max_cells");
-    arg++;
+    ++arg;
 
 
     err = clEnqueueNDRangeKernel(
@@ -1259,7 +1259,7 @@ cl_event build_tree_run(
         &body_pos
     );
     ocl_check(err, "clSetKernelArg body_pos");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k, 
@@ -1268,7 +1268,7 @@ cl_event build_tree_run(
         &cell_children
     );
     ocl_check(err, "clSetKernelArg cell_children");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1277,7 +1277,7 @@ cl_event build_tree_run(
         &cell_center
     );
     ocl_check(err, "clSetKernelArg cell_center");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1286,7 +1286,7 @@ cl_event build_tree_run(
         &cell_half_size
     );
     ocl_check(err, "clSetKernelArg cell_half_size");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1295,7 +1295,7 @@ cl_event build_tree_run(
         &body_count
     );
     ocl_check(err, "clSetKernelArg body_count");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1304,7 +1304,7 @@ cl_event build_tree_run(
         &max_cells
     );
     ocl_check(err, "clSetKernelArg max_cells");
-    arg++;
+    ++arg;
 
 
     err = clEnqueueNDRangeKernel(
@@ -1351,7 +1351,7 @@ cl_event summarize_tree_run(
         &body_pos
     );
     ocl_check(err, "clSetKernelArg body_pos");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1360,7 +1360,7 @@ cl_event summarize_tree_run(
         &body_mass
     );
     ocl_check(err, "clSetKernelArg body_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1369,7 +1369,7 @@ cl_event summarize_tree_run(
         &cell_mass
     );
     ocl_check(err, "clSetKernelArg cell_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1378,7 +1378,7 @@ cl_event summarize_tree_run(
         &cell_center_of_mass
     );
     ocl_check(err, "clSetKernelArg cell_center_of_mass");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1387,7 +1387,7 @@ cl_event summarize_tree_run(
         &cell_children
     );
     ocl_check(err, "clSetKernelArg cell_children");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1396,7 +1396,7 @@ cl_event summarize_tree_run(
         &body_count
     );
     ocl_check(err, "clSetKernelArg body_count");
-    arg++;
+    ++arg;
 
     err = clSetKernelArg(
         k,
@@ -1405,7 +1405,7 @@ cl_event summarize_tree_run(
         &max_cells
     );
     ocl_check(err, "clSetKernelArg max_cells");
-    arg++;
+    ++arg;
 
     err = clEnqueueNDRangeKernel(
         que,
