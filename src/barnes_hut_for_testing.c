@@ -235,6 +235,10 @@ int main(int argc, char *argv[]) {
     size_t cell_1dfloat_buffer_size = sizeof(cl_float) * (body_count * NODE_PER_BODY + 1);
     size_t reduction_buffer_size = sizeof(cl_float2) * body_count;
 
+
+    /*DEBUG*/
+    cl_float2 bounding_box_host[2];
+    
     /* INSERIRE QUI TUTTA LA ROBA DA ALLOCARE DIRETTAMENTE 
     NELLA GPU, QUINDI QUAD-TREE, ARRAY FORZA E SIMILI*/
 
@@ -386,6 +390,30 @@ int main(int argc, char *argv[]) {
             output_buffer = reduction_buffer1;
         }
     }
+
+    /* DEBUG */
+    err = clEnqueueReadBuffer(
+        que,
+        bounding_box_mem,
+        CL_TRUE,
+        0,
+        sizeof(bounding_box_host),
+        bounding_box_host,
+        0,
+        NULL,
+        NULL
+    );
+    ocl_check(err, "clEnqueueReadBuffer bounding_box");
+
+    printf(
+        "bounding box:\n"
+        "min = (%f, %f)\n"
+        "max = (%f, %f)\n",
+        bounding_box_host[0].x,
+        bounding_box_host[0].y,
+        bounding_box_host[1].x,
+        bounding_box_host[1].y
+    );
 
     /*resetting the indexes and values inside the
       quadtree arrays to the default value*/
