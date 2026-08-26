@@ -1,0 +1,486 @@
+#define BBOX_MIN_INDEX 0
+#define BBOX_MAX_INDEX 1
+#define CHILDREN 4
+#define NULL_NODE -1
+#define TOLLERANCE 1.0001f
+#define MAX_TREE_DEPTH 32
+#define STACK_SIZE 100
+#define EPSILON 2.5f
+#define G 0.2f
+
+
+kernel void reduce_minmax_lmem_sliding_k1(
+    global const float2 * restrict pos,
+    global float2 * restrict res_min,
+    global float2 * restrict res_max,
+    global float2 * restrict bounding_box,
+    const unsigned int body_count_nhex,
+    local float2 * local_min,             
+    local float2 * local_max              
+) {
+    int gi = get_global_id(0);
+    const int li = get_local_id(0);
+    const int lws = get_local_size(0);
+    const int group = get_group_id(0);
+    const int gsize = get_global_size(0);
+
+    float2 my_min = (float2)(INFINITY, INFINITY);
+    float2 my_max = (float2)(-INFINITY, -INFINITY);
+
+    global const float16* pos_v16 = (global const float16*)pos;
+
+    for (int i = gi; i < body_count_nhex; i += gsize) {
+        
+        float16 v16 = pos_v16[i];
+        float8 min8 = fmin(v16.lo, v16.hi);
+        float4 min4 = fmin(min8.lo, min8.hi);
+        float2 min2 = fmin(min4.lo, min4.hi);
+        my_min = fmin(my_min, min2);
+
+        float8 max8 = fmax(v16.lo, v16.hi);
+        float4 max4 = fmax(max8.lo, max8.hi);
+        float2 max2 = fmax(max4.lo, max4.hi);
+        my_max = fmax(my_max, max2);
+    }
+
+    local_min[li] = my_min;
+    local_max[li] = my_max;
+
+    for (int active = lws/2; active > 0; active /= 2) {
+        barrier(CLK_LOCAL_MEM_FENCE);
+        
+        if (li < active) {
+            my_min = fmin(my_min, local_min[li + active]);
+            local_min[li] = my_min;
+        
+            my_max = fmax(my_max, local_max[li + active]);
+            local_max[li] = my_max;
+        }
+    }
+
+    if (li == 0) {
+        res_min[group] = my_min;
+        res_max[group] = my_max;
+    }
+}
+
+
+kernel void reduce_minmax_lmem_sliding_k2(
+    global const float2 * restrict res_min,
+    global const float2 * restrict res_max,
+    global float2 * restrict bounding_box,
+    const unsigned int group_count,
+    local float2 * local_min,
+    local float2 * local_max
+) {
+    int gi = get_global_id(0);
+    const int li = get_local_id(0);
+    const int lws = get_local_size(0);
+    const int gsize = get_global_size(0);
+
+    float2 my_min = (float2)(INFINITY, INFINITY);
+    float2 my_max = (float2)(-INFINITY, -INFINITY);
+
+    for (int i = gi; i < group_count; i += gsize) {
+        my_min = fmin(my_min, res_min[i]);
+        my_max = fmax(my_max, res_max[i]);
+    }
+
+    local_min[li] = my_min;
+    local_max[li] = my_max;
+
+    for (int active = lws / 2; active > 0; active /= 2) {
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        if (li < active) {
+            my_min = fmin(my_min, local_min[li + active]);
+            local_min[li] = my_min;
+
+            my_max = fmax(my_max, local_max[li + active]);
+            local_max[li] = my_max;
+        }
+    }
+
+    if (li == 0) {
+        bounding_box[0] = my_min;
+        bounding_box[1] = my_max;
+    }
+}
+
+
+/* CONVENZIONE:
+    10 11
+    00 01
+*/
+inline int get_quadrant(float2 pos, float2 center) {
+
+    int right = pos.x >= center.x;
+    int top = pos.y >= center.y;
+    return (top << 1) | right;
+}
+
+
+inline float2 get_new_center(
+    float2 parent_center, 
+    float parent_half_size, 
+    unsigned int quadrant
+) {
+    float2 new_center = parent_center;
+    parent_half_size = parent_half_size * 0.5f;
+    
+    switch(quadrant) {
+        case 0: new_center = new_center - parent_half_size;
+            break;
+        case 1: new_center = (float2) {new_center.x + parent_half_size, new_center.y - parent_half_size};
+            break;
+        case 2: new_center = (float2) {new_center.x - parent_half_size, new_center.y + parent_half_size};
+            break;
+        case 3: new_center = new_center + parent_half_size;
+            break;
+        default: new_center = new_center + parent_half_size;
+    }
+    return new_center;
+}
+
+
+/*
+per memorizzare nell'array del quad tree sia indici
+di nodi che indici di corpi, diciamo che qualsiasi 
+indice di nodo deve essere >= di body count, e quindi
+viene sommata proprio questa quantità
+*/
+
+inline int cell_to_idx(int cell_id, int body_count) {
+    return cell_id + body_count;
+}
+
+
+inline int idx_to_cell(int cell_id, int body_count) {
+    return cell_id - body_count;
+}
+
+
+inline int idx_is_body(int ref, int body_count) {
+    return ref >= 0 && ref < body_count;
+}
+
+
+inline int idx_is_cell(int ref, int body_count) {
+    return ref >= body_count;
+}
+
+
+kernel void reset_init_tree(
+    global int * restrict cell_children,
+    global float2 * restrict cell_center,
+    global float * restrict cell_half_size,
+    global float * restrict cell_mass,
+    global const float2 * restrict bounding_box,
+    unsigned int max_cells
+) {
+
+    unsigned int id = get_global_id(0);
+
+    if (id >= max_cells) {
+        return;
+    }
+
+    cell_center[id] = (float2)(0.0f, 0.0f);
+    cell_half_size[id] = 0.0f;
+    cell_mass[id] = -1.0f;
+
+    #pragma unroll 
+    for (int child = 0; child < CHILDREN; child++) {
+        cell_children[id * CHILDREN + child] = NULL_NODE;
+    }
+
+    if (id == 0) {
+        const float2 min = bounding_box[BBOX_MIN_INDEX];
+        const float2 max = bounding_box[BBOX_MAX_INDEX];
+        const float2 bbox_size = max - min;
+
+        cell_center[0] = 0.5f * (min + max);
+        cell_half_size[0] = 0.5f * fmax(bbox_size.x, bbox_size.y) * TOLLERANCE;
+    }
+}
+
+
+kernel void serial_build_tree(
+    global const float2 * restrict body_pos,
+    global int * restrict cell_children,
+    global float2 * restrict cell_center,
+    global float * restrict cell_half_size,
+    unsigned int body_count,
+    unsigned int max_cells
+) {
+
+    if (get_global_id(0) != 0) {
+        return;
+    }
+
+    unsigned int allocated_cells = 1;
+
+    for (int id = 0; id < body_count; id++) {
+        float2 this_pos = body_pos[id]; 
+        int cell = 0;
+        bool inserted = 0;
+
+        for (int depth = 0; depth < MAX_TREE_DEPTH; depth++) {
+            if (inserted) {
+                break;
+            }
+            float2 center = cell_center[cell];
+            float half_size = cell_half_size[cell];
+            int quadrant = get_quadrant(this_pos, center);
+            int child_idx = cell * CHILDREN + quadrant; 
+            int child = cell_children[child_idx];
+            
+            if (child == NULL_NODE) {
+                cell_children[child_idx] = id;
+                inserted = true;
+                break;
+            }
+        
+            if (idx_is_cell(child, body_count)) { 
+                cell = idx_to_cell(child, body_count);
+                continue;
+            }
+
+            int old_body = child;
+            float2 old_pos = body_pos[old_body];
+
+            int top_cell = -1;
+            int parent_cell = -1;
+            int parent_quadrant = -1;
+            float2 parent_center = center;
+            float parent_half_size = half_size;
+
+            for (int split_depth = depth; 
+                split_depth < MAX_TREE_DEPTH; 
+                split_depth++
+            ) {
+                if (allocated_cells >= max_cells) {
+                    return;
+                }
+                
+                int new_cell = allocated_cells;
+                allocated_cells++;
+                float new_half_size = parent_half_size * 0.5f;
+                float2 new_center = get_new_center(parent_center, parent_half_size, quadrant);
+                cell_center[new_cell] = new_center;
+                cell_half_size[new_cell] = new_half_size;
+
+                /* TODO: VALUTAZIONE DELLE PERFORMANCE CON E SENZA PRAGMA UNROLL
+                dubito di vedere enormi miglioramenti, ma chissà */
+                #pragma unroll 
+                for (int child_index = 0; child_index < CHILDREN; child_index++) {
+                    cell_children[new_cell * CHILDREN + child_index] = NULL_NODE;
+                }
+
+                if (top_cell < 0) {
+                    top_cell = new_cell;
+                }
+
+                if (parent_cell >= 0) {
+                    cell_children[parent_cell * CHILDREN + parent_quadrant] = cell_to_idx(new_cell, body_count);
+                }
+
+                int old_quadrant = get_quadrant(old_pos, new_center);
+                int new_quadrant = get_quadrant(this_pos, new_center);
+
+                if (old_quadrant != new_quadrant) {
+                    cell_children[new_cell * CHILDREN + old_quadrant] = old_body;
+                    cell_children[new_cell * CHILDREN + new_quadrant] = id;
+                    cell_children[child_idx] = cell_to_idx(top_cell, body_count);
+
+                    inserted = true;
+                    break;
+                }
+
+                parent_cell = new_cell;
+                parent_quadrant = old_quadrant;
+                parent_center = new_center;
+                parent_half_size = new_half_size;
+                quadrant = old_quadrant;
+            }
+        }
+    }
+}
+
+
+kernel void summarize_tree(
+    global const float2 * restrict body_pos,
+    global const float * restrict body_mass,
+    global float * restrict cell_mass,
+    global float2 * restrict cell_center_of_mass,
+    global const int * restrict cell_children,
+    unsigned int body_count,
+    unsigned int max_cells
+) {
+
+    unsigned int id = get_global_id(0);
+
+    if (id >= max_cells || cell_mass[id] >= 0) {
+        return;
+    }
+
+    float total_mass = 0;
+    float2 this_center_of_mass = (float2)(0.0f, 0.0f);
+    float2 weighted_pos = (float2)(0.0f, 0.0f);
+    for (int child_idx = 0; child_idx < CHILDREN; child_idx++) {
+        
+        int this_child = cell_children[id * CHILDREN + child_idx];
+
+        if (this_child == NULL_NODE) {
+            continue;
+        }
+
+        float this_mass;
+        if (idx_is_body(this_child, body_count)) {
+            this_mass = body_mass[this_child];
+            total_mass += this_mass;
+            weighted_pos += this_mass * body_pos[this_child];
+        } else {
+            this_mass = cell_mass[idx_to_cell(this_child, body_count)];
+            if (this_mass < 0.0f) {
+                return;
+            }
+            total_mass += this_mass;
+            weighted_pos += cell_center_of_mass[idx_to_cell(this_child, body_count)] * this_mass;
+        }
+    }
+
+    if (total_mass <= 0.0f) {
+        return;
+    }
+
+    this_center_of_mass = weighted_pos / total_mass;
+    cell_center_of_mass[id] = this_center_of_mass;
+    mem_fence(CLK_GLOBAL_MEM_FENCE);
+    cell_mass[id] = total_mass;
+}
+
+
+kernel void compute_acc_walk(
+    global const float2 * restrict body_pos,
+    global const float * restrict body_mass,
+    global float2 * restrict body_acc,
+    global const float * restrict cell_mass,
+    global const float2 * restrict cell_center,
+    global const float * restrict cell_half_size,
+    global const float2 * restrict cell_center_of_mass,
+    global const int * restrict cell_children,
+    float const theta_squared,
+    unsigned int body_count
+) {
+    unsigned int id = get_global_id(0);
+    if (id >= body_count) {
+        return;
+    }
+    
+    float2 this_pos = body_pos[id];
+    float this_mass = body_mass[id];
+    float2 this_acceleration = (float2)(0.0f, 0.0f);
+
+    int stack[STACK_SIZE];
+    stack[0] = cell_to_idx(0, body_count);
+    int stack_idx = 0;
+    stack_idx++;
+
+    while (stack_idx > 0) {
+        stack_idx--;
+
+        int node = stack[stack_idx];
+
+        if (node == NULL_NODE) {
+            continue;
+        }
+
+        if (idx_is_body(node, body_count)) {
+            if (node == id) {
+                continue;
+            }
+            float2 other_pos = body_pos[node];
+            float2 dist_vec = other_pos - this_pos;
+            float dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
+
+            float inv_dist = rsqrt(dist_squared);
+            float inv_dist3 = inv_dist * inv_dist * inv_dist;
+
+            this_acceleration += G * body_mass[node] * dist_vec * inv_dist3;
+            continue;
+        } 
+
+
+        int cell_idx = idx_to_cell(node, body_count);
+        float other_mass = cell_mass[cell_idx];
+
+        if (other_mass <= 0.0f) {
+            continue;
+        }
+        
+        float2 other_center_of_mass = cell_center_of_mass[cell_idx];
+        float2 other_center = cell_center[cell_idx];
+        float other_half_size = cell_half_size[cell_idx];
+
+        float2 dist_vec = other_center_of_mass - this_pos;
+        float dist_squared = fmax(dot(dist_vec, dist_vec), EPSILON);
+
+        bool contains_body = (fabs(this_pos.x - other_center.x) <= other_half_size) &&
+                            (fabs(this_pos.y - other_center.y) <= other_half_size);
+
+        float size_squared =  (other_half_size * 2) * (other_half_size * 2);
+        
+        if (!contains_body && size_squared < theta_squared * dist_squared) {
+            float inv_dist = rsqrt(dist_squared);
+            float inv_dist3 = inv_dist * inv_dist * inv_dist;
+            this_acceleration += G * other_mass * dist_vec * inv_dist3;
+            continue;
+        }
+        
+        for (int child_idx = 0; child_idx < CHILDREN; child_idx++) {
+            int child = cell_children[cell_idx * CHILDREN + child_idx];
+
+            if (child != NULL_NODE && stack_idx < STACK_SIZE) {
+                stack[stack_idx++] = child;
+            }
+        }
+    }
+
+    body_acc[id] = this_acceleration;
+}
+
+
+kernel void update_vel(
+    global float2 * restrict body_vel,
+    global const float2 * restrict body_acc,
+    const float delta_time,
+    const int body_count
+) {
+
+    int id = get_global_id(0);
+
+    if (id >= body_count) {
+        return;
+    }
+
+    body_vel[id] += body_acc[id] * delta_time;
+}
+
+
+kernel void update_pos(
+    global float2 * restrict body_pos,
+    global const float2 * restrict body_vel,
+    const float delta_time,
+    const int body_count
+) {
+    int id = get_global_id(0);
+
+    if (id >= body_count) {
+        return;
+    }
+
+    body_pos[id] += body_vel[id] * delta_time;
+}
+
+
