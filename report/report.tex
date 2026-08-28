@@ -529,6 +529,18 @@ Con questa implementazione ibrida dell'algoritmo Barnes-Hut, riusciamo finalment
 Questo approccio ibrido rende la nostra implementazione su Barnes-Hut viabile per applicazioni real-time. In particolare, questo vantaggio si ottiene a numeri molto più bassi di particelle sulla Intel Arc rispetto all'AMD RX6600, il che è riconducibile a due motivi fondamentali: un processore più performante, e l'uso della mappatura in memoria (molto conveniente sulle GPU integrate).
 
 	\newpage
+	
+	\section{Ricerca di minimo e del massimo con sliding window}
+	Seppur nelle implementazioni fornite fino ad ora abbiamo usato un approccio alle riduzioni parallele basato su un albero dei confronti, esistono approcci migliori che permettono di
+	\begin{enumerate}
+		\item ridurre il numero di lanci dei kernel da $\log_2n$ a 2;
+		\item ridurre il numero di accessi alla memoria globale, sfruttando quanto possibile la local memory.
+	\end{enumerate}
+	L'approccio che permette di ottenere questi risultati, è chiamato sliding window (con local memory). 
+	
+	INSERIRE il casting a v16, COME SONO GESTITI I CONFRONTI VETTORIZZATI CON .hi e .lo, come funziona la local memory, perché i due kernel separati, 
+	
+	\newpage
 	\bibliographystyle{unsrt} 
 	\bibliography{report}      
 	
