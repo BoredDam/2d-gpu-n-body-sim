@@ -53,7 +53,10 @@
 \begin{abstract}
 Con la seguente relazione si documenta la realizzazione di simulazioni $n$-body tramite soluzioni parallele su GPU. Si trattano quindi aspetti degni di nota, quali gli algoritmi, i metodi numerici,  le ottimizzazioni e un'analisi delle performance.  Le soluzioni principali presentate saranno tre: un'approccio naive su GPU, un approccio approssimato Barnes-Hut totalmente su GPU (con quad-tree seriale) e un approccio approssimato Barnes-Hut ibrido GPU-CPU.
 \end{abstract}
-	
+\newpage
+\tableofcontents
+\newpage
+
 \section{Introduzione}
 In questa sezione offriamo un'introduzione al progetto, dando una definizione del problema $n$-body, i dettagli fisici e matematici e come verranno sviluppati i test.
 
@@ -291,7 +294,7 @@ A 60 FPS, Raphael non supera i 15610 corpi, l'Intel ARC i 34400 corpi e l'AMD RX
 
 \newpage
 	
-\section{Simulazione Barnes-Hut totalemente su GPU con costruzione del seriale quadtree}
+\section{Simulazione Barnes-Hut totalemente su GPU con costruzione seriale del quadtree}
 L'algoritmo Barnes-Hut permette di simulare sistemi a $n$ corpi in maniera approssimata, con precisione arbitraria e complessità asintotica $\mathcal O (n \log n)$. Sfrutta una particolare struttura dati, ossia un quad-tree (figura~\ref{fig:quadtree}), un albero in cui ogni nodo ha quattro figli, per suddividere ricorsivamente lo spazio,  memorizzare valori relativi al sistema e velocizzare il passaggio più oneroso della simulazione brute-force: il calcolo delle forze (o dell'accelerazione), notoriamente un passaggio a complessità $\mathcal O (n^2)$.
 %
 \begin{figure}[tbph]
@@ -312,6 +315,7 @@ Tuttavia l'algoritmo paga l'overhead della costruzione del quad-tree, che richie
 %
 Questi passaggi sono i più costosi dell'algoritmo, ma sono anche alla base del suo vantaggio asintotico.
 
+\newpage
 	\subsection{I kernel fondamentali}
 	
 	\paragraph{Calcolo dei margini della bounding-box}
@@ -375,7 +379,7 @@ In letteratura gli approcci ottimali per la summarize-tree sfruttano spesso funz
 
 Il kernel funziona in questo modo: dato un nodo $A$, calcolane la massa (e il centro di massa) osservandone i figli. Se uno di questi figli ha valori non inizializzati (questo avviene quando non si è ancora calcolata la loro massa), esci dal kernel e .non modificare la massa del nodo (e nemmeno il centro di massa). 
 Questo kernel va lanciato sull'intero quad-tree per un numero di volte pari alla sua altezza, ottenendo una sorta di ``onda'' di pesi che si propagano dal basso verso l'alto.
-\newpage
+
 \begin{algorithm}[h]
 	\caption{Summarize tree (propagazione masse e centri di massa)}
 	\begin{algorithmic}[1]
@@ -432,15 +436,17 @@ Questi ultimi due kernel sono uguali a quelli del metodo naive, quindi non verra
 	\caption{Simulazione $n$-body Barnes-Hut}
 	\begin{algorithmic}[1]
 		\Require array dei corpi $C$, $n = |C|$, delta tempo $dt$, numero di  iterazioni $t$
-		\State
-		\State lancia $n$ kernel \textbf{accelerazione naive} su $C$ con delta tempo $dt$ 
-		\State lancia $n$ kernel \textbf{calcolo velocità} su $C$ con delta tempo $dt/2$ 
-		\For{t}
-		\State lancia $n$ kernel \textbf{calcolo posizione} su $C$ con delta tempo $dt$ 
-		\State lancia $n$ kernel \textbf{accelerazione naive} su $C$ con delta tempo $dt$ 
-		\State lancia $n$ kernel \textbf{calcolo velocità} su $C$ con delta tempo $dt$ 
+		\For {$\log_2n$}
+		\State lancia kernel \textbf{riduzione minimo} per ogni corpo rimanente
 		\EndFor
-		
+		\For {$\log_2n$}
+	\State lancia kernel \textbf{riduzione massimo} per ogni corpo rimanente
+	\EndFor
+	\State lancia $n$ kernel di \textbf{reset e inizializzazione dell'albero}
+	\State lancia 1 kernel di \textbf{costruzione seriale dell'albero}
+	\For{MAX TREE DEPTH}
+	\State lancia kernel \textbf{propagazione masse e centri di massa} per ogni possibile cella del quad-tree
+	\EndFor
 	\end{algorithmic}
 \end{algorithm}
 
