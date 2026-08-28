@@ -665,15 +665,11 @@ int main(int argc, char *argv[]) {
     }
 
 
-    printf("TIMES:\n\nreduction_k1: %fms\nreduction_k2: %fms\nreset_init: %fms\n"
-           "build: %fms\nsummarize: %fms\ncompute_acc: %fms\nupdate_vel: %fms\n"
-           "update_pos: %fms\n",
-           reduction_k1_ms, reduction_k2_ms, reset_init_tree_ms, build_tree_ms, 
-           summarize_tree_ms, compute_acc_ms, update_vel_ms, update_pos_ms
+    printf("TIMES:\n\nreduction_k1: %fms\nreduction_k2: %fms\nreduction_k1+k2: %fms\n",
+           reduction_k1_ms, reduction_k2_ms, reduction_k1_ms + reduction_k2_ms
         );
 
-    write_bh_stats_on_disk(reduction_k1_ms, reduction_k2_ms, reset_init_tree_ms, build_tree_ms,summarize_tree_ms, 
-                           compute_acc_ms, update_vel_ms, update_pos_ms, body_count, sim_name);
+    write_slidingwindow_stats_on_disk(reduction_k1_ms, reduction_k2_ms, lws, nwg_cu, body_count, sim_name);
 
     clReleaseMemObject(body_pos_mem);
     clReleaseMemObject(body_vel_mem);
