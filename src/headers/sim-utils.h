@@ -79,7 +79,7 @@ void write_bh_stats_on_disk(
     const char *sim_name
 ) {
     /* 
-    another shitty function to handle writing frames on disk:/
+    another shitty function to handle writing data on disk:/
     */
     FILE *fp;
     char file_name[512];
@@ -91,3 +91,25 @@ void write_bh_stats_on_disk(
     fclose(fp); 
 }
 
+
+void write_slidingwindow_stats_on_disk(
+    const double reduction_k1, 
+    const double reduction_k2,
+    const int lws, 
+    const int nwg_cu, 
+    const int body_count, 
+    const char *sim_name
+) {
+    /* 
+    another shitty function to handle writing data on disk:/
+    */
+    FILE *fp;
+    char file_name[512];
+    sprintf(file_name, "./tests/%s/%s.csv", sim_name, sim_name);
+    fp = fopen(file_name, "a+");
+    fprintf(fp, "%f,%f,%f,%d,%d,%d\n",
+        reduction_k1, reduction_k2, reduction_k1+reduction_k2,
+        lws, nwg_cu, body_count
+    );
+    fclose(fp); 
+}
