@@ -30,7 +30,6 @@ kernel void reduce_minmax_lmem_sliding_k1(
     global const float16* pos_v16 = (global const float16*)pos;
 
     for (int i = gi; i < body_count_nhex; i += gsize) {
-        
         float16 v16 = pos_v16[i];
         float8 min8 = fmin(v16.lo, v16.hi);
         float4 min4 = fmin(min8.lo, min8.hi);
@@ -334,7 +333,7 @@ kernel void summarize_tree(
         if (this_child == NULL_NODE) {
             continue;
         }
-
+        
         float this_mass;
         if (idx_is_body(this_child, body_count)) {
             this_mass = body_mass[this_child];
