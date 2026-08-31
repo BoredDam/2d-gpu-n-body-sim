@@ -705,12 +705,12 @@ cl_event reduce_minmax_lmem_sliding_k2_run(
     cl_mem res_max,
     cl_mem bounding_box,
     unsigned int group_count,
-    cl_int lws_cli
+    cl_int lws_in
 ) {
     cl_event event;
     cl_int err;
 
-    const size_t lws[1] = { lws_cli };
+    const size_t lws[1] = { lws_in };
     const size_t gws[1] = { lws[0] };
 
     cl_uint arg = 0;
