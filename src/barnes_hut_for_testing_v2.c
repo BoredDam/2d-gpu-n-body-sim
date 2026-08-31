@@ -173,7 +173,7 @@ int main(int argc, char *argv[]) {
     size_t children_buffer_size = sizeof(cl_int) * (max_cells) * CHILDREN;
     size_t cell_2dfloat_buffer_size = sizeof(cl_float2) * (body_count * NODE_PER_BODY + 1);
     size_t cell_1dfloat_buffer_size = sizeof(cl_float) * (body_count * NODE_PER_BODY + 1);
-    size_t reduction_buffer_size = sizeof(cl_float2) * body_count;
+    
 
     /* tutti i dati necessari per la riduzione parallela con sliding window local memory della v2*/
     cl_int cu;
@@ -188,6 +188,7 @@ int main(int argc, char *argv[]) {
 	}
 	printf("%d wg per CU, %d CU = %d work-groups\n", nwg_cu, cu, nwg);
 
+    size_t reduction_buffer_size = sizeof(cl_float2) * nwg;
     /* INSERIRE QUI TUTTA LA ROBA DA ALLOCARE DIRETTAMENTE 
     NELLA GPU, QUINDI QUAD-TREE, ARRAY FORZA E SIMILI*/
 
