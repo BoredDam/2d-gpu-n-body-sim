@@ -53,17 +53,17 @@ Per quanto riguarda l'integrazione delle grandezze rispetto al tempo, si è deci
 ./naive_parallel_for_testing.out <numero di corpi> <numero di frame> <nome della configurazione con estensione> <nome output> <theta> <0 solo benchmarking, 1 benchmarking e output>
 ```
 ## Alcuni esempi
-Sistema a 18mila corpi con metodo naive.
+Sistema a 180mila corpi con metodo naive.
 
-[![18k-bodysim](https://img.youtube.com/vi/oSdXonzxpXk/0.jpg)](https://www.youtube.com/watch?v=oSdXonzxpXk)
+[![180k-bodysim](https://img.youtube.com/vi/oSdXonzxpXk/0.jpg)](https://www.youtube.com/watch?v=oSdXonzxpXk)
 
 ```
 ./naive_parallel_for_testing.out 180000 999 galactic_chaos_180k.csv 180ksim_naive 1
 ```
 
-Sistema a 18mila corpi con metodo Barnes-Hut con $\theta = 0.1$.
+Sistema a 180mila corpi con metodo Barnes-Hut con $\theta = 0.1$.
 
-[![18k-bodysim-bh](https://img.youtube.com/vi/zR9vvkl9Xt0/0.jpg)](https://www.youtube.com/watch?v=zR9vvkl9Xt0)
+[![180k-bodysim-bh](https://img.youtube.com/vi/zR9vvkl9Xt0/0.jpg)](https://www.youtube.com/watch?v=zR9vvkl9Xt0)
 
 ```
 ./barnes_hut_for_testing.out 180000 999 galactic_chaos_180k.csv 180ksim_BH 0.1 1
