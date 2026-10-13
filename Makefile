@@ -1,4 +1,4 @@
-all: barnes_hut_testv2_1
+all: barnes_hut_test
 
 barnes_hut: ./src/barnes_hut.c
 	gcc ./src/barnes_hut.c -lOpenCL -lm -o barnes_hut.out
